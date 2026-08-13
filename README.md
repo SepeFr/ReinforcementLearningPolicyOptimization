@@ -5,15 +5,17 @@ Libreria C++20 per l'ottimizzazione black-box di policy neurali.
 ## Demo con Docker
 
 ```bash
-# 1. clone 
+# 1. Clone
 
-git clone https://github.com/SepeFr/ReinformentLearningPolicyOptimization.git
-cd ReinformentLearningPolicyOptimization
+git clone https://github.com/SepeFr/ReinforcementLearningPolicyOptimization.git
+cd ReinforcementLearningPolicyOptimization
 
-# 2. set-up docker
+# 2. Build dell'immagine Docker
+
 docker build -t reinforcement-learning-policy-optimization .
 
-# 3. Run a small demo  
+# 3. Esecuzione di una demo
+
 docker run --rm reinforcement-learning-policy-optimization
 ```
 
@@ -23,6 +25,7 @@ docker run --rm reinforcement-learning-policy-optimization
 
 ```bash
 mkdir -p build/experiments
+
 docker run --rm --user "$(id -u):$(id -g)" \
   -v "$PWD/build/experiments:/app/build/experiments" \
   reinforcement-learning-policy-optimization \
@@ -38,10 +41,12 @@ docker run --rm reinforcement-learning-policy-optimization \
 
 ## Documentazione
 
-La documentazione Doxygen è disponibile su
-<https://sepefr.github.io/ReinformentLearningPolicyOptimization/>.
+La documentazione Doxygen è disponibile su:
+
+<https://sepefr.github.io/ReinforcementLearningPolicyOptimization/>
 
 La copia locale è disponibile in `build/doxygen/html/index.html`.
+
 Per rigenerarla:
 
 ```bash
