@@ -1,0 +1,82 @@
+/**
+ * @page simulation_execution_chapter Simulation and policy execution
+ *
+ * One episode is a synchronous exchange between an @ref Environment and a
+ * @ref Policy. Their nested `Observation` and `Action` types must match at
+ * compile time. @ref EpisodeRunner contains the control loop and returns an
+ * @ref EpisodeResult when the environment reports completion.
+ *
+ * @image html simulation_components.svg "Simulation components and the policy-optimization bridge."
+ *
+ * @section simulation_episode_sequence Episode sequence
+ *
+ * @image html episode_runner_sequence.svg "Calls, loop condition, and values exchanged during one episode."
+ *
+ * 1. `Environment::reset(scenario)` establishes new internal episode state and
+ *    returns the initial observation.
+ * 2. `Policy::act(observation)` returns one action. A @ref FeedForwardPolicy
+ *    encodes the observation, runs its network, and decodes the output through
+ *    the action type.
+ * 3. `Environment::step(action)` advances the same episode and returns a
+ *    @ref StepResult containing the next observation, reward, flags, and reason.
+ * 4. @ref EpisodeRunner adds the reward and increments the step counter. The
+ *    next observation becomes the input of the following loop iteration.
+ * 5. `StepResult::hasFinished()` ends the loop when `terminated`, `truncated`,
+ *    or a non-`None` termination reason is present. The final flags and reason
+ *    are copied into @ref EpisodeResult.
+ *
+ * The runner imposes no independent step limit. The environment implements any
+ * time or step limit and must eventually report a finished transition.
+ *
+ * @section simulation_data Data contracts
+ *
+ * @ref ObservationBase stores vector components in policy-input order and
+ * returns a copy from `observationToVector()`. Derived observation types may
+ * implement a different encoding. @ref ActionBase receives policy-output
+ * components through `vectorToAction()`; derived actions may decode them into
+ * an environment-specific representation. @ref ObservationVector and
+ * @ref ActionVector provide vector-compatible convenience types.
+ *
+ * Reward has the unit defined by the environment. `EpisodeResult::total_reward`
+ * is the arithmetic sum in transition order. `steps` is exactly the number of
+ * calls to `Environment::step()`. Termination flags and the reason come only
+ * from the final transition.
+ *
+ * @section simulation_objective Scenario and replica expansion
+ *
+ * @ref PolicyOptimizationProblem turns a parameter vector into an
+ * @ref ObjectiveEvaluation. For scenarios
+ * \f$\Sigma=(\sigma_1,\ldots,\sigma_S)\f$ and `number_of_runs = M`, it runs
+ * \f$SM\f$ episodes in scenario-major,
+ * replica-minor order:
+ *
+ * ```text
+ * sigma1/run1, sigma1/run2, ..., sigma1/runM, sigma2/run1, ..., sigmaS/runM
+ * ```
+ *
+ * The problem owns its scenario copies and two policy objects. It borrows one
+ * environment and reuses it sequentially. The primary policy produces actions.
+ * A second @ref FeedForwardNetwork exposes weight parameters for regularization.
+ * With @ref RegularizationApplication::Include, the same configured L1 or
+ * squared-L2 penalty is added to every episode return. Validation and test calls
+ * use @ref RegularizationApplication::Exclude.
+ *
+ * Each completed episode contributes one episode counter, its number of steps,
+ * one inference per step, and
+ * `steps * FeedForwardNetworkComputationCost::macsPerInference()` MACs. A final
+ * reason equal to the environment's `Failure` value marks that objective sample
+ * failed while retaining its numeric return.
+ *
+ * @section simulation_errors Error propagation
+ *
+ * Observation or parameter dimension errors propagate from the policy and
+ * network. Environment and policy exceptions also propagate. An arithmetic
+ * overflow caught by @ref PolicyOptimizationProblem appends one failed NaN
+ * sample and returns the partial objective evaluation immediately. This makes
+ * the optimizer treat the candidate evaluation as failed while preserving work
+ * already recorded before the overflow.
+ *
+ * @see @ref neural_parameter_mapping_chapter "Neural policies and parameter mapping"
+ * @see @ref optimization_lifecycle_chapter "Optimization lifecycle"
+ * @see @ref technical_chapters "Technical Chapters"
+ */

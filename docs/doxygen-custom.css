@@ -1,0 +1,11 @@
+/* Keep the generated documentation comfortably readable at its initial scale. */
+body {
+  zoom: 1.1;
+}
+
+/* Wide SVG diagrams remain accessible instead of being clipped by the viewport. */
+.image {
+  overflow-x: auto;
+  padding-bottom: 0.35rem;
+}
+

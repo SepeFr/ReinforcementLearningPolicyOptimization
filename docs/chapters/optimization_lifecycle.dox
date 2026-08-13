@@ -1,0 +1,102 @@
+/**
+ * @page optimization_lifecycle_chapter Optimization lifecycle
+ *
+ * @ref Optimizer connects an owned @ref BlackBoxProblem, an owned
+ * @ref OptimizerMethod, an initialization strategy, and external stopping
+ * criteria. Concrete methods implement algorithm state; the orchestrator owns
+ * candidate validation, objective calls, direction conversion, counters, and
+ * the public @ref OptimizerResult.
+ *
+ * @image html optimizer_components.svg "Optimization components, ownership, and feedback direction."
+ *
+ * @section optimizer_sequence Ask--evaluate--tell sequence
+ *
+ * @image html optimizer_sequence.svg "One optimizer batch and its stopping decisions."
+ *
+ * 1. `optimize()` resets both the @ref InitialParametersStrategy and method.
+ *    A method with @ref OptimizerMethod::ConvergenceStatus::NoInternalCriterion
+ *    requires at least one external stopping configuration.
+ * 2. `OptimizerMethod::ask()` returns a non-empty ordered vector of candidates.
+ *    Method-specific state retains the phase and order expected by feedback.
+ * 3. @ref OptimizationStoppingCriterion limits cardinality before evaluation
+ *    when a `MaximumEvaluationsStoppingConfiguration` budget has fewer slots
+ *    than the requested batch.
+ * 4. Every retained candidate must have `BlackBoxProblem::parametersCount()`
+ *    coordinates. Non-finite or out-of-bounds candidates become failed
+ *    @ref CandidateEvaluation objects without invoking the problem.
+ * 5. A feasible candidate is passed to `BlackBoxProblem::evaluate()`. Its
+ *    @ref ExecutionMetrics are accumulated even when its samples later make the
+ *    candidate fail. A non-empty evaluation containing only finite samples is
+ *    successful.
+ * 6. Maximization samples are negated before method feedback. The method therefore
+ *    always compares lower means. `OptimizerMethod::tell()` first runs the
+ *    concrete state transition and then updates its global incumbent.
+ * 7. Batch, evaluation, and logical-iteration counters are updated. External
+ *    criteria inspect the batch, current method incumbent, and iteration count.
+ *    Internal convergence is tested after external criteria.
+ * 8. At termination, maximization incumbent evaluations and history are negated
+ *    again. Public results return to the problem's natural direction.
+ *
+ * @section optimizer_evaluation_types Evaluation layers
+ *
+ * @ref ObjectiveEvaluation owns raw samples in append order, a separate failed-
+ * sample count, and work metrics. Statistical accessors include every stored
+ * value, including finite samples marked failed. Candidate success requires a
+ * non-empty aggregate containing only finite values; the failed-sample count is
+ * retained as separate metadata.
+ *
+ * @ref CandidateEvaluation couples one parameter vector with that aggregate and
+ * a @ref CandidateEvaluationStatus. `Succeeded` means a non-empty finite
+ * aggregate is available. `Failed` covers feasibility rejection and unusable
+ * objective output. `NotEvaluated` represents the initial method incumbent.
+ * Batch order is the only association between ask output and tell input.
+ *
+ * @section optimizer_budget Batch atomicity and budgets
+ *
+ * `number_of_evaluations` and maximum-evaluation stopping count attempted
+ * candidates, including feasibility rejections. A partial final batch is
+ * evaluated up to the remaining allowance and counted as a batch. Concrete
+ * state machines receive complete feedback batches through `tell()`, so the
+ * optimizer stops before forwarding this partial batch.
+ * Consequently, its evaluations cannot update the method incumbent. Stopping
+ * criteria still inspect the retained partial feedback to determine the final
+ * reason.
+ *
+ * `number_of_iterations` increases only when @ref OptimizerMethodUpdate reports
+ * `iteration_completed`. Multi-phase algorithms may process several ask--tell
+ * batches before completing one logical iteration. External maximum-iteration
+ * criteria use this logical count.
+ *
+ * @section optimizer_incumbent Incumbent and history
+ *
+ * The method incumbent is the first successful candidate attaining the lowest
+ * minimization-space mean. After each complete batch, @ref Optimizer copies a
+ * changed incumbent into `best_parameters_history`. If a stochastic method
+ * refines the aggregate evaluation of identical parameters, it updates the last
+ * history entry with the refined aggregate.
+ * Selection finishing without any successful complete-batch incumbent throws
+ * @ref ConfigurationEvaluationError.
+ *
+ * @section optimizer_factory Assembly and lifetime
+ *
+ * @ref OptimizerFactory first applies @ref OptimizerConfigurationValidator to
+ * the problem dimension. Variant alternatives then create initialization,
+ * neighborhood, cooling, and method implementations. @ref Optimizer owns all
+ * transferred objects. Methods that receive `InitialParametersStrategy*` borrow
+ * the optimizer-owned strategy. Its lifetime spans the method lifetime.
+ *
+ * Direct @ref Optimizer construction creates @ref RandomInitialization when no
+ * strategy is supplied, using the problem's optional inclusive bounds. The
+ * method pointer is rebound to the strategy owned by that optimizer.
+ *
+ * @section optimizer_errors Error flow
+ *
+ * Candidate dimension mismatch, an empty ask batch, and objective or method
+ * exceptions propagate. Feasibility rejection stays inside ordered feedback.
+ * Execution-metric overflow propagates from checked counters. The optimizer
+ * never changes candidate coordinates to satisfy bounds.
+ *
+ * @see @ref optimization_method_states_chapter "Optimization method state machines"
+ * @see @ref simulation_execution_chapter "Simulation and policy execution"
+ * @see @ref technical_chapters "Technical Chapters"
+ */

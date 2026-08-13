@@ -1,0 +1,46 @@
+/**
+ * @mainpage ReinforcementLearningPolicyOptimization
+ *
+ * Use **Technical Chapters** to understand the library architecture and execution flows.
+ * Use **Class Categories** for a module-oriented API index and **Classes** for
+ * the complete alphabetical type and member reference.
+ *
+ * @section main_technical_chapters Technical Chapters
+ *
+ * - @ref library_architecture_chapter "Library architecture and data flow"
+ * - @ref simulation_execution_chapter "Simulation and policy execution"
+ * - @ref neural_parameter_mapping_chapter "Neural policies and parameter mapping"
+ * - @ref optimization_lifecycle_chapter "Optimization lifecycle"
+ * - @ref optimization_method_states_chapter "Optimization method state machines"
+ * - @ref model_selection_chapter "Model selection and validation"
+ * - @ref genetic_search_chapter "Genetic configuration search"
+ * - @ref cost_validation_chapter "Computational cost and configuration validation"
+ *
+ * @section main_class_categories Class Categories
+ *
+ * - @ref computational_cost_api "Computational Cost"
+ * - @ref genetic_algorithm_api "Genetic Algorithm"
+ * - @ref model_selection_api "Model Selection"
+ * - @ref neural_network_api "Neural Networks"
+ * - @ref optimizer_core_api "Optimization Core"
+ * - @ref optimization_methods_api "Optimization Methods"
+ * - @ref simulation_api "Simulation"
+ * - @ref validation_api "Validation and Errors"
+ */
+
+/**
+ * @page technical_chapters Technical Chapters
+ *
+ * These guides describe the concrete collaboration between library components.
+ * Use the chapter sequence below for a continuous path from architecture through
+ * execution, optimization, model selection, and configuration validation.
+ *
+ * - @subpage library_architecture_chapter
+ * - @subpage simulation_execution_chapter
+ * - @subpage neural_parameter_mapping_chapter
+ * - @subpage optimization_lifecycle_chapter
+ * - @subpage optimization_method_states_chapter
+ * - @subpage model_selection_chapter
+ * - @subpage genetic_search_chapter
+ * - @subpage cost_validation_chapter
+ */

@@ -1,0 +1,417 @@
+{
+  "master_seed": "0x5EED1234C0FFEE",
+  "scenarios": {
+    "training": 32,
+    "validation": 32,
+    "test": 64
+  },
+  "policy": {
+    "hidden_activation": "ActivationType::Tanh",
+    "output_activation": "ActivationType::Tanh",
+    "use_bias": true,
+    "regularization_type": "RegularizationType::L2_Regularization",
+    "regularization_coefficient": 1e-6,
+    "initialization": "FeedForwardInitializationType::XavierUniform"
+  },
+  "environments": {
+    "CARTPOLE": {
+      "network": {
+        "input_size": 4,
+        "hidden_layers": [
+          8
+        ],
+        "output_size": 1
+      },
+      "scenario": {
+        "state_minimum": -0.05,
+        "state_maximum": 0.05
+      },
+      "runs_per_scenario": 1,
+      "target_return": 475.0,
+      "chang_objective_offset": 501.0
+    },
+    "PENDULUM": {
+      "network": {
+        "input_size": 3,
+        "hidden_layers": [
+          8
+        ],
+        "output_size": 1
+      },
+      "scenario": {
+        "angle_minimum": -3.141592653589793,
+        "angle_maximum": 3.141592653589793,
+        "velocity_minimum": -1.0,
+        "velocity_maximum": 1.0
+      },
+      "runs_per_scenario": 1,
+      "target_return": -150.0,
+      "chang_objective_offset": 1.0
+    },
+    "PENDULUM_STOCHASTIC": {
+      "base": "PENDULUM",
+      "runs_per_scenario": 3,
+      "torque_noise_stddev": 0.2,
+      "target_return": -150.0,
+      "chang_objective_offset": 1.0
+    }
+  },
+  "model_selection": {
+    "restarts": 2,
+    "batch_size": 1,
+    "maximum_configurations": 48,
+    "no_improvement_patience": 12,
+    "no_improvement_threshold": 1e-8,
+    "optimizer_stopping": {
+      "default": {
+        "maximum_iterations": 30,
+        "maximum_evaluations": 120,
+        "no_improvement_patience": 15,
+        "no_improvement_threshold": 1e-6,
+        "safety_evaluations": 200
+      },
+      "PENDULUM_STOCHASTIC_GPS_RINOTT": {
+        "maximum_evaluations": 300,
+        "safety_evaluations": 5000
+      }
+    }
+  },
+  "algorithms": {
+    "NELDER_MEAD": {
+      "cpp_type": "NelderMeadHyperparameters",
+      "axes": {
+        "initial_simplex_scale": [
+          0.05,
+          0.1
+        ],
+        "stopping_criterion": [
+          "DispersionStoppingConfiguration{ 1e-4, 1e-4 }",
+          "RelativeVariationStoppingConfiguration{ 1e-6 }",
+          "StandardDeviationStoppingConfiguration{ 1e-4 }",
+          "HeightDifferenceStoppingConfiguration{ 1e-4, -std::numeric_limits< double >::infinity() }",
+          "RelativeFunctionToleranceStoppingConfiguration{ 1e-6 }"
+        ]
+      },
+      "fixed": {
+        "reflection_coefficient": 1.0,
+        "expansion_coefficient": 2.0,
+        "inside_contraction_coefficient": -0.5,
+        "outside_contraction_coefficient": 0.5,
+        "shrink_coefficient": 0.5
+      },
+      "assign": [
+        "hyperparameters.initial_simplex_scale = {initial_simplex_scale};",
+        "hyperparameters.reflection_coefficient = {reflection_coefficient};",
+        "hyperparameters.expansion_coefficient = {expansion_coefficient};",
+        "hyperparameters.inside_contraction_coefficient = {inside_contraction_coefficient};",
+        "hyperparameters.outside_contraction_coefficient = {outside_contraction_coefficient};",
+        "hyperparameters.shrink_coefficient = {shrink_coefficient};",
+        "hyperparameters.stopping_criterion = {stopping_criterion};"
+      ]
+    },
+    "STOCHASTIC_NELDER_MEAD": {
+      "base": "NELDER_MEAD",
+      "cpp_type": "StochasticHeuristicNelderMeadHyperparameters",
+      "fixed": {
+        "shrink_coefficient": 0.75,
+        "reevaluate_stagnant_best": true,
+        "reevaluate_best_before_shrink": true,
+        "confirm_contraction": true
+      },
+      "assign": [
+        "hyperparameters.initial_simplex_scale = {initial_simplex_scale};",
+        "hyperparameters.reflection_coefficient = {reflection_coefficient};",
+        "hyperparameters.expansion_coefficient = {expansion_coefficient};",
+        "hyperparameters.inside_contraction_coefficient = {inside_contraction_coefficient};",
+        "hyperparameters.outside_contraction_coefficient = {outside_contraction_coefficient};",
+        "hyperparameters.shrink_coefficient = {shrink_coefficient};",
+        "hyperparameters.stopping_criterion = {stopping_criterion};",
+        "hyperparameters.reevaluate_stagnant_best = {reevaluate_stagnant_best};",
+        "hyperparameters.reevaluate_best_before_shrink = {reevaluate_best_before_shrink};",
+        "hyperparameters.confirm_contraction = {confirm_contraction};"
+      ]
+    },
+    "CHANG_NELDER_MEAD": {
+      "base": "NELDER_MEAD",
+      "cpp_type": "ChangStochasticNelderMeadHyperparameters",
+      "axes": {
+        "minimum_sample_size": [
+          2,
+          5
+        ],
+        "global_search_probability": [
+          0.05,
+          0.1
+        ]
+      },
+      "fixed": {
+        "parameter_bound": 5.0
+      },
+      "assign": [
+        "hyperparameters.initial_simplex_scale = {initial_simplex_scale};",
+        "hyperparameters.reflection_coefficient = {reflection_coefficient};",
+        "hyperparameters.expansion_coefficient = {expansion_coefficient};",
+        "hyperparameters.inside_contraction_coefficient = {inside_contraction_coefficient};",
+        "hyperparameters.outside_contraction_coefficient = {outside_contraction_coefficient};",
+        "hyperparameters.shrink_coefficient = {shrink_coefficient};",
+        "hyperparameters.stopping_criterion = {stopping_criterion};",
+        "hyperparameters.minimum_sample_size = {minimum_sample_size};",
+        "hyperparameters.global_search_probability = {global_search_probability};",
+        "hyperparameters.lower_bound = Eigen::VectorXd::Constant( static_cast< Eigen::Index >( parameter_count ), -{parameter_bound} );",
+        "hyperparameters.upper_bound = Eigen::VectorXd::Constant( static_cast< Eigen::Index >( parameter_count ), {parameter_bound} );"
+      ]
+    },
+    "GPS": {
+      "cpp_type": "GeneralizedPatternSearchHyperparameters",
+      "axes": {
+        "initial_mesh_size": [
+          0.5,
+          1.0
+        ],
+        "mesh_size_adjustment": [
+          0.5
+        ],
+        "stopping_mesh_size": [
+          0.01,
+          0.001
+        ]
+      },
+      "assign": [
+        "hyperparameters.initial_mesh_size = {initial_mesh_size};",
+        "hyperparameters.mesh_size_adjustment = {mesh_size_adjustment};",
+        "hyperparameters.stopping_mesh_size = {stopping_mesh_size};"
+      ]
+    },
+    "GPS_SURROGATE_QUADRATIC": {
+      "base": "GPS",
+      "axes": {
+        "selected_fraction": [
+          0.25,
+          0.5
+        ],
+        "regularization": [
+          1e-8,
+          1e-6
+        ],
+        "radius_multiplier": [
+          2.0,
+          4.0
+        ]
+      },
+      "fixed": {
+        "random_points": 8,
+        "l1_radius": 2
+      },
+      "assign": [
+        "hyperparameters.initial_mesh_size = {initial_mesh_size};",
+        "hyperparameters.mesh_size_adjustment = {mesh_size_adjustment};",
+        "hyperparameters.stopping_mesh_size = {stopping_mesh_size};",
+        "SurrogateGPSSearchConfiguration search;",
+        "search.random_points_strategy = RandomMeshGPSSearchConfiguration{{ {random_points}, {l1_radius}, 0 }};",
+        "search.model = LocalQuadraticSurrogateConfiguration{{ {regularization}, {radius_multiplier} }};",
+        "search.selected_fraction = {selected_fraction};",
+        "hyperparameters.search = std::move( search );"
+      ]
+    },
+    "GPS_SURROGATE_RBF": {
+      "base": "GPS",
+      "axes": {
+        "selected_fraction": [
+          0.25,
+          0.5
+        ],
+        "function": [
+          "RBFFunction::Cubic",
+          "RBFFunction::Linear"
+        ],
+        "regularization": [
+          0.0,
+          1e-8
+        ],
+        "radius_multiplier": [
+          2.0,
+          4.0
+        ]
+      },
+      "fixed": {
+        "random_points": 8,
+        "l1_radius": 2,
+        "maximum_coreset_size": 128
+      },
+      "assign": [
+        "hyperparameters.initial_mesh_size = {initial_mesh_size};",
+        "hyperparameters.mesh_size_adjustment = {mesh_size_adjustment};",
+        "hyperparameters.stopping_mesh_size = {stopping_mesh_size};",
+        "SurrogateGPSSearchConfiguration search;",
+        "search.random_points_strategy = RandomMeshGPSSearchConfiguration{{ {random_points}, {l1_radius}, 0 }};",
+        "search.model = RBFSurrogateConfiguration{{ {function}, {regularization}, {radius_multiplier}, {maximum_coreset_size} }};",
+        "search.selected_fraction = {selected_fraction};",
+        "hyperparameters.search = std::move( search );"
+      ]
+    },
+    "GPS_RINOTT": {
+      "base": "GPS",
+      "axes": {
+        "initial_sample_size": [
+          3,
+          5
+        ],
+        "initial_significance": [
+          0.8
+        ],
+        "initial_indifference": [
+          1.0
+        ],
+        "stochastic_stopping": [
+          "NoStochasticGPSStoppingConfiguration{}",
+          "StochasticGPSMeshSizeStoppingConfiguration{}",
+          "StochasticGPSSignificanceStoppingConfiguration{ 1e-4 }",
+          "StochasticGPSSignificanceStoppingConfiguration{ 1e-6 }",
+          "StochasticGPSNoiseToIndifferenceStoppingConfiguration{ 1e4 }",
+          "StochasticGPSNoiseToIndifferenceStoppingConfiguration{ 1e6 }"
+        ]
+      },
+      "fixed": {
+        "significance_decay": 0.95,
+        "indifference_decay": 0.95
+      },
+      "environment_overrides": {
+        "PENDULUM_STOCHASTIC": {
+          "axes": {
+            "initial_sample_size": [
+              3
+            ],
+            "initial_indifference": [
+              100.0
+            ]
+          },
+          "fixed": {
+            "significance_decay": 0.99,
+            "indifference_decay": 0.99
+          }
+        }
+      },
+      "cpp_type": "RinottRankingSelectionGPSHyperparameters",
+      "assign": [
+        "hyperparameters.initial_mesh_size = {initial_mesh_size};",
+        "hyperparameters.mesh_size_adjustment = {mesh_size_adjustment};",
+        "hyperparameters.stopping_mesh_size = {stopping_mesh_size};",
+        "hyperparameters.initial_sample_size = {initial_sample_size};",
+        "hyperparameters.initial_significance = {initial_significance};",
+        "hyperparameters.initial_indifference = {initial_indifference};",
+        "hyperparameters.significance_decay = {significance_decay};",
+        "hyperparameters.indifference_decay = {indifference_decay};",
+        "hyperparameters.stopping_criterion = {stochastic_stopping};"
+      ]
+    },
+    "SIMULATED_ANNEALING": {
+      "cpp_type": "SimulatedAnnealingHyperparameters",
+      "axes": {
+        "initial_temperature": [
+          0.5,
+          1.0
+        ],
+        "minimal_temperature": [
+          0.001,
+          0.0001
+        ],
+        "neighborhood_scale": [
+          0.05,
+          0.1
+        ],
+        "cooling_function": [
+          "GeometricCoolingConfiguration{ 0.95 }",
+          "GeometricCoolingConfiguration{ 0.99 }",
+          "LinearCoolingConfiguration{ 0.005, 0.0 }",
+          "LinearCoolingConfiguration{ 0.01, 0.0 }",
+          "LogarithmicCoolingConfiguration{ 0.5, 2.0 }",
+          "LogarithmicCoolingConfiguration{ 1.0, 2.0 }",
+          "ReciprocalCoolingConfiguration{ 0.01 }",
+          "ReciprocalCoolingConfiguration{ 0.05 }",
+          "ExponentialCoolingConfiguration{ 0.005 }",
+          "ExponentialCoolingConfiguration{ 0.01 }",
+          "InverseLogarithmicCoolingConfiguration{ {parameter_count} }"
+        ]
+      },
+      "fixed": {
+        "neighborhood_mean": 0.0,
+        "neighborhood_standard_deviation": 1.0
+      },
+      "assign": [
+        "hyperparameters.neighborhood = GaussianNeighborhoodConfiguration{{ {neighborhood_mean}, {neighborhood_standard_deviation} }};",
+        "hyperparameters.cooling_function = {cooling_function};",
+        "hyperparameters.initial_temperature = {initial_temperature};",
+        "hyperparameters.minimal_temperature = {minimal_temperature};",
+        "hyperparameters.neighborhood_scale = {neighborhood_scale};"
+      ]
+    },
+    "PSO": {
+      "cpp_type": "PSOHyperparameters",
+      "axes": {
+        "population_size": [
+          16,
+          32
+        ],
+        "initial_inertia_weight": [
+          0.6,
+          0.7298
+        ]
+      },
+      "fixed": {
+        "cognitive_coefficient": 1.49618,
+        "social_coefficient": 1.49618,
+        "initial_velocity_scale": 0.1
+      },
+      "assign": [
+        "hyperparameters.population_size = {population_size};",
+        "hyperparameters.initial_inertia_weight = {initial_inertia_weight};",
+        "hyperparameters.cognitive_coefficient = {cognitive_coefficient};",
+        "hyperparameters.social_coefficient = {social_coefficient};",
+        "hyperparameters.initial_velocity_scale = {initial_velocity_scale};"
+      ]
+    },
+    "CMA_ES": {
+      "cpp_type": "CMAESHyperparameters",
+      "axes": {
+        "initial_sigma": [
+          0.25,
+          0.5
+        ],
+        "population_size": [
+          16,
+          32
+        ]
+      },
+      "assign": [
+        "hyperparameters.initial_sigma = {initial_sigma};",
+        "hyperparameters.population_size = {population_size};"
+      ]
+    },
+    "OPENAI_ES": {
+      "cpp_type": "OpenAIESHyperparameters",
+      "axes": {
+        "population_size": [
+          16,
+          32
+        ],
+        "learning_rate": [
+          0.01,
+          0.03
+        ],
+        "noise_scale": [
+          0.05,
+          0.1
+        ]
+      },
+      "fixed": {
+        "use_rank_fitness": true
+      },
+      "assign": [
+        "hyperparameters.population_size = {population_size};",
+        "hyperparameters.learning_rate = {learning_rate};",
+        "hyperparameters.noise_scale = {noise_scale};",
+        "hyperparameters.use_rank_fitness = {use_rank_fitness};"
+      ]
+    }
+  }
+}

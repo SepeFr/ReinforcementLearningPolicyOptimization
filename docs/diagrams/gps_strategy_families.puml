@@ -1,0 +1,79 @@
+@startuml
+!include _common.iuml
+skinparam nodesep 30
+skinparam ranksep 65
+title GPS strategy and surrogate families
+
+class "<b>GPSMethod</b>\nowns search and poll strategies" as GPSMethod <<owner>>
+
+package "Search" as PKG_SEARCH {
+  abstract class "<b>GPSSearchStrategy</b>\nask() · tell() · reset()" as GPSSearchStrategy <<abstract_family>>
+  class "<b>EmptyGPSSearchStrategy</b>" as EmptyGPSSearchStrategy
+  class "<b>RandomMeshGPSSearchStrategy</b>" as RandomMeshGPSSearchStrategy
+  class "<b>LatinHypercubeMeshGPSSearchStrategy</b>" as LatinHypercubeMeshGPSSearchStrategy
+  class "<b>SuccessfulDirectionGPSSearchStrategy</b>" as SuccessfulDirectionGPSSearchStrategy
+  class "<b>SurrogateGPSSearchStrategy</b>" as SurrogateGPSSearchStrategy
+
+  EmptyGPSSearchStrategy -up-|> GPSSearchStrategy
+  RandomMeshGPSSearchStrategy -up-|> GPSSearchStrategy
+  LatinHypercubeMeshGPSSearchStrategy -up-|> GPSSearchStrategy
+  SuccessfulDirectionGPSSearchStrategy -up-|> GPSSearchStrategy
+  SurrogateGPSSearchStrategy -up-|> GPSSearchStrategy
+  EmptyGPSSearchStrategy -[hidden]right-> RandomMeshGPSSearchStrategy
+  RandomMeshGPSSearchStrategy -[hidden]right-> LatinHypercubeMeshGPSSearchStrategy
+  LatinHypercubeMeshGPSSearchStrategy -[hidden]right-> SuccessfulDirectionGPSSearchStrategy
+  SuccessfulDirectionGPSSearchStrategy -[hidden]right-> SurrogateGPSSearchStrategy
+}
+
+package "Poll and surrogate model" as PKG_POLL {
+  circle "<size:1> </size>" as POLL_ROUTE_ENTRY #transparent;line:transparent
+  circle "<size:1> </size>" as SURROGATE_ROUTE_ENTRY #transparent;line:transparent
+  abstract class "<b>GPSPollStrategy</b>\ndirections() · reset()" as GPSPollStrategy <<abstract_family>>
+  class "<b>CompleteGPSPollStrategy</b>" as CompleteGPSPollStrategy
+  abstract class "<b>SurrogateModel</b>\nfit · predict · reset" as SurrogateModel <<abstract_family>>
+  class "<b>LocalQuadraticSurrogate</b>" as LocalQuadraticSurrogate
+  class "<b>RBFSurrogate</b>" as RBFSurrogate
+
+  CompleteGPSPollStrategy -up-|> GPSPollStrategy
+  LocalQuadraticSurrogate -up-|> SurrogateModel
+  RBFSurrogate -up-|> SurrogateModel
+  POLL_ROUTE_ENTRY -[hidden]right-> SURROGATE_ROUTE_ENTRY
+  POLL_ROUTE_ENTRY -[hidden]down-> GPSPollStrategy
+  SURROGATE_ROUTE_ENTRY -[hidden]down-> SurrogateModel
+  GPSPollStrategy -[hidden]right-> SurrogateModel
+  CompleteGPSPollStrategy -[hidden]right-> LocalQuadraticSurrogate
+  LocalQuadraticSurrogate -[hidden]down-> RBFSurrogate
+  SurrogateGPSSearchStrategy *-right- SURROGATE_ROUTE_ENTRY : <back:#FFFFFF>owns one</back>
+  SURROGATE_ROUTE_ENTRY -down- SurrogateModel
+}
+
+GPSMethod *-down- GPSSearchStrategy
+GPSMethod *-down- POLL_ROUTE_ENTRY
+POLL_ROUTE_ENTRY -down- GPSPollStrategy
+PKG_SEARCH -[hidden]right-> PKG_POLL
+
+package "Stochastic GPS stopping (owned by RinottRankingSelectionGPSMethod)" as PKG_STOCHASTIC {
+  class "<b>RinottRankingSelection</b>\nGPSMethod" as RinottRankingSelectionGPSMethod <<owner>>
+  abstract class "<b>StochasticGPSStoppingStrategy</b>\nshouldStop(state)" as StochasticGPSStoppingStrategy <<abstract_family>>
+  class "<b>NoStochasticGPSStoppingCriterion</b>" as NoStochasticGPSStoppingCriterion
+  class "<b>StochasticGPSMeshSizeStoppingCriterion</b>" as StochasticGPSMeshSizeStoppingCriterion
+  class "<b>StochasticGPSSignificanceStoppingCriterion</b>" as StochasticGPSSignificanceStoppingCriterion
+  class "<b>StochasticGPSNoiseToIndifferenceStoppingCriterion</b>" as StochasticGPSNoiseToIndifferenceStoppingCriterion
+
+  RinottRankingSelectionGPSMethod *-right- StochasticGPSStoppingStrategy
+  NoStochasticGPSStoppingCriterion -up-|> StochasticGPSStoppingStrategy
+  StochasticGPSMeshSizeStoppingCriterion -up-|> StochasticGPSStoppingStrategy
+  StochasticGPSSignificanceStoppingCriterion -up-|> StochasticGPSStoppingStrategy
+  StochasticGPSNoiseToIndifferenceStoppingCriterion -up-|> StochasticGPSStoppingStrategy
+  NoStochasticGPSStoppingCriterion -[hidden]right-> StochasticGPSMeshSizeStoppingCriterion
+  StochasticGPSMeshSizeStoppingCriterion -[hidden]right-> StochasticGPSSignificanceStoppingCriterion
+  StochasticGPSSignificanceStoppingCriterion -[hidden]right-> StochasticGPSNoiseToIndifferenceStoppingCriterion
+}
+
+PKG_SEARCH -[hidden]down-> PKG_STOCHASTIC
+PKG_POLL -[hidden]down-> PKG_STOCHASTIC
+
+legend bottom center
+Filled diamond denotes ownership. Open triangle points to an abstract base.
+endlegend
+@enduml

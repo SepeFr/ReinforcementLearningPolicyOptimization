@@ -1,0 +1,38 @@
+@startuml
+!include _common.iuml
+title Feed-forward execution and canonical parameter mapping
+
+rectangle "<b>Network configuration</b>\n<math>n_0</math>, hidden widths, <math>n_L</math>\nactivations · use_bias" as CONFIG <<component>>
+rectangle "<b>Observation</b>\nobservationToVector()\n<math>x in RR^(n_0)</math>" as OBS <<component>>
+rectangle "<b>DenseLayer 1</b>\n<math>W_1: n_1 xx n_0</math>\n<math>b_1: n_1</math> or empty\n<math>h_1 = f_1(W_1 x + b_1)</math>" as LAYER1 <<bridge>>
+rectangle "<b>…</b>" as DOTS <<bridge>>
+rectangle "<b>DenseLayer L</b>\n<math>W_L: n_L xx n_(L-1)</math>\n<math>b_L: n_L</math> or empty\n<math>y = f_L(W_L h_(L-1) + b_L)</math>" as LAYERL <<bridge>>
+rectangle "<b>Action</b>\nvectorToAction(y)\noutput order is type-defined" as ACTION <<component>>
+
+OBS -right-> LAYER1
+LAYER1 -right-> DOTS
+DOTS -right-> LAYERL
+LAYERL -right-> ACTION
+CONFIG -down-> LAYER1
+
+package "canonical parameter vector (layer order)" as PARAM_VECTOR <<label_group>> {
+  rectangle "<b>W₁ column-major</b>\n<math>n_0 n_1</math> values" as W1 <<weight>>
+  rectangle "<b>b₁</b>\n<math>n_1</math>" as B1 <<bias>>
+  rectangle "<b>…</b>" as PARAM_DOTS <<weight>>
+  rectangle "<b>W_L column-major</b>\n<math>n_(L-1)n_L</math> values" as WL <<weight>>
+  rectangle "<b>b_L</b>\n<math>n_L</math>" as BL <<bias>>
+  rectangle "<b>ParameterLayout</b>\noffset + count per slice" as LAYOUT <<component>>
+  W1 -[hidden]right-> B1
+  B1 -[hidden]right-> PARAM_DOTS
+  PARAM_DOTS -[hidden]right-> WL
+  WL -[hidden]right-> BL
+  BL -[hidden]right-> LAYOUT
+}
+
+W1 .up[#80551D].> LAYER1
+WL .up[#80551D].> LAYERL
+
+rectangle "<latex>P = \sum_{l=1}^{L} n_{l-1}n_l + \mathbf{1}_{bias}\sum_{l=1}^{L}n_l</latex>" as TOTAL <<component>>
+PARAM_DOTS -[hidden]down-> TOTAL
+
+@enduml

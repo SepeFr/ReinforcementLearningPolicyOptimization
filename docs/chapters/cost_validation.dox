@@ -1,0 +1,136 @@
+/**
+ * @page cost_validation_chapter Computational cost and configuration validation
+ *
+ * The library measures simulation and neural-network work independently from
+ * objective values. @ref ConfigurationScoringCriterion optionally turns those
+ * measurements and network size into normalized penalties. Validators reject
+ * configuration errors before expensive model evaluation.
+ *
+ * @section cost_metrics Execution metrics and units
+ *
+ * @ref ExecutionMetrics contains four unsigned 64-bit counters:
+ *
+ * | Counter | Unit | Update point |
+ * |---|---|---|
+ * | `number_of_episodes` | completed episode executions | Once per completed @ref EpisodeRunner call recorded by @ref PolicyOptimizationProblem. |
+ * | `number_of_simulation_steps` | environment transitions | Episode step count. |
+ * | `number_of_policy_inferences` | policy action computations | One per recorded episode step. |
+ * | `number_of_neural_network_macs` | matrix multiply-accumulate operations | Inferences times network MACs per inference. |
+ *
+ * @ref FeedForwardNetworkComputationCost computes the last factor as
+ * \f$\sum_{\ell=1}^{L}n_{\ell-1}n_\ell\f$. Bias additions and activation operations are outside
+ * this unit. Every metrics operation checks additions and multiplication before
+ * committing any affected counter, so its own overflow leaves the metrics object
+ * unchanged and throws `std::overflow_error`.
+ *
+ * Optimizer metrics include every actual `BlackBoxProblem::evaluate()` call,
+ * including calls whose output later fails finiteness checks. Feasibility
+ * rejections perform no objective work. Model-selection state accumulates
+ * metrics from successfully scored configurations. Final result totals then add
+ * retraining and test work.
+ *
+ * @section cost_score Selection score
+ *
+ * @ref ConfigurationScoringConfiguration assigns non-negative weights to
+ * architecture, simulation, and neural-network terms. Zero disables a term.
+ * With validation contribution \f$\overline J_{\mathrm{val}}(c)\f$ already in
+ * minimization direction, parameter count \f$P(c)\f$, episodes \f$E(c)\f$,
+ * steps \f$T(c)\f$, and MACs \f$A(c)\f$, @ref ConfigurationScoringCriterion computes
+ *
+ * \f[
+ * S(c)=\overline J_{\mathrm{val}}(c)
+ * +\eta_p\frac{P(c)}{P_{\max}}
+ * +\eta_s\frac{c_rE(c)+c_tT(c)}{C_{s,\max}}
+ * +\eta_n\frac{A(c)}{C_{n,\max}}.
+ * \f]
+ *
+ * Lower scores always rank first. Validation variance is required to be finite
+ * and non-negative and has coefficient zero in the expression. A normalized
+ * term above one remains unchanged in the score and emits a diagnostic through
+ * `std::clog`. A non-finite final sum raises @ref ConfigurationEvaluationError with
+ * @ref ConfigurationEvaluationErrorKind::NonFiniteSelectionScore.
+ *
+ * @section cost_bounds Automatic upper bounds
+ *
+ * @ref ComputationCostUpperBoundsCalculator derives a denominator only when its
+ * weight is positive and no explicit denominator is configured. Let \f$B\f$ be
+ * `maximum_black_box_evaluations`, \f$R_t,R_v\f$ the training and validation
+ * replicas, and \f$T_{max}\f$ maximum episode steps. Holdout validation uses
+ *
+ * \f[
+ * E_{max}=B|S_t|R_t+|S_v|R_v.
+ * \f]
+ *
+ * K-fold validation sums
+ * \f$B(q-v_k)R_t+v_kR_v\f$ over concrete validation fold sizes \f$v_k\f$.
+ * The maximum transition count is \f$Q_{max}=E_{max}T_{max}\f$. Automatic
+ * denominators are
+ *
+ * \f[
+ * C_{s,max}=c_rE_{max}+c_tQ_{max},\qquad
+ * C_{n,max}=Q_{max}M_{inference,max}.
+ * \f]
+ *
+ * Derivation requires positive evaluation and episode-step limits. The MAC limit
+ * is additionally required for an automatic neural-network bound. Protocol
+ * replica counts must be positive, holdout sets non-empty, and K-fold count at
+ * least two and no greater than combined scenario count. Every active resulting
+ * denominator must be finite and positive. Inactive categories retain the
+ * neutral stored bound `1.0`.
+ *
+ * @section validation_layers Validation layers
+ *
+ * @ref PolicyConfigurationValidator requires positive input, output, and hidden
+ * widths, known activation and regularization enum values, the supported policy
+ * type, and a finite non-negative regularization coefficient.
+ *
+ * @ref ModelConfigurationValidator applies policy validation, derives the
+ * checked network parameter count, and invokes @ref OptimizerConfigurationValidator.
+ * When @ref FeedForwardInitializationConfiguration is active, its input width,
+ * hidden-width sequence, output width, and bias setting must match the policy
+ * network. Every activation choice retains that parameter layout. Parameter-
+ * count overflow is converted to @ref InvalidConfigurationError.
+ *
+ * @ref OptimizerConfigurationValidator first requires a positive dimension
+ * representable as `Eigen::Index`. It then validates these groups:
+ *
+ * - initialization vectors match dimension and contain finite values; paired
+ *   random bounds are coordinate-wise ordered; a provided vector collection is
+ *   non-empty; feed-forward initialization has a supported type and matching
+ *   parameter count;
+ * - external stopping alternatives are distinct; iteration/evaluation budgets
+ *   and no-improvement spans are positive; thresholds are finite in their
+ *   documented ranges;
+ * - neighborhood intervals, cooling parameters, simplex construction and rank,
+ *   GPS generating matrices and strategies, surrogate settings, stochastic GPS
+ *   sampling, and population-method coefficients satisfy their configuration
+ *   field contracts;
+ * - initialization form is compatible with the selected method. A provided
+ *   simplex is paired exactly with provided-vector initialization. SPSA accepts
+ *   random or one provided initial vector;
+ * - at least one external stopping criterion exists when the method has no
+ *   usable internal criterion. For linear simulated annealing, the configured
+ *   schedule floor must lie below the method threshold for that threshold to
+ *   count as reachable.
+ *
+ * GPS generating matrices are finite square matrices of problem dimension and
+ * must be invertible. Global simplex and Chang search bounds match problem
+ * dimension and use strict coordinate ordering. Rinott sampling requires an
+ * initial sample size of at least two, probabilities and decay factors in
+ * `(0,1)`, and positive indifference parameters. The exact scalar defaults and
+ * ranges remain on the corresponding configuration structs in **Classes**.
+ *
+ * @section validation_failures Failure categories
+ *
+ * @ref InvalidConfigurationError derives from `std::invalid_argument` and marks
+ * pre-execution configuration failures. @ref ConfigurationEvaluationError uses
+ * @ref ConfigurationEvaluationErrorKind to distinguish general evaluation
+ * failure, non-finite validation statistics, and a non-finite selection score.
+ * During @ref ModelSelection these become matching @ref ModelSelectionFailureKind
+ * records and failed selector feedback. Arithmetic and unexpected runtime
+ * exceptions outside those categories propagate.
+ *
+ * @see @ref model_selection_chapter "Model selection and validation"
+ * @see @ref neural_parameter_mapping_chapter "Neural policies and parameter mapping"
+ * @see @ref technical_chapters "Technical Chapters"
+ */

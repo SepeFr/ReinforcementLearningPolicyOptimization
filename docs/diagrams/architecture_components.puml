@@ -1,0 +1,65 @@
+@startuml
+!include _common.iuml
+allowmixing
+skinparam nodesep 95
+title Library modules and principal data flow
+
+rectangle "<b>Configuration & validation</b>\nModelConfiguration\nConfigurationSearchSpace\nModelConfigurationValidator" as CONFIG <<component>>
+rectangle "<b>Model selection</b>\nModelSelection · ConfigurationSelector\nValidationProtocol · scoring\nsuccessful and failed history" as MODEL <<component>>
+rectangle "<b>Genetic configuration search</b>\nGeneticConfigurationSelector\nGeneticAlgorithmEngine" as GENETIC <<support>>
+
+rectangle "<b>Neural policies</b>\nFeedForwardNetwork\nParameterLayout · PolicyFactory" as NEURAL <<component>>
+rectangle "<b>Optimization</b>\nOptimizer · OptimizerMethod\nBlackBoxProblem · stopping\nCandidateEvaluation" as OPTIMIZATION <<component>>
+rectangle "<b>Cost and error accounting</b>\nExecutionMetrics · upper bounds\nConfigurationEvaluationError\nInvalidConfigurationError" as COST <<support>>
+
+rectangle "<b>Simulation</b>\nEnvironment · Policy\nEpisodeRunner\nEpisodeResult" as SIMULATION <<component>>
+rectangle "<b>PolicyOptimizationProblem</b>\ncandidate → scenario replicas\nObjectiveEvaluation + metrics" as POLICY_OPT <<bridge>>
+rectangle "<b>Public results</b>\nOptimizerResult · ModelSelectionResult\nnatural-direction evaluations" as RESULTS <<result>>
+
+' Invisible routing anchors keep the long result edge outside the right column.
+circle "<size:1> </size>" as RESULTS_ROUTE_START #transparent;line:transparent
+circle "<size:1> </size>" as RESULTS_ROUTE_TOP #transparent;line:transparent
+circle "<size:1> </size>" as RESULTS_ROUTE_MIDDLE #transparent;line:transparent
+circle "<size:1> </size>" as RESULTS_ROUTE_BOTTOM #transparent;line:transparent
+
+' Preserve the original three-column architecture.
+CONFIG -[hidden]right-> MODEL
+MODEL -[hidden]right-> GENETIC
+NEURAL -[hidden]right-> OPTIMIZATION
+OPTIMIZATION -[hidden]right-> COST
+SIMULATION -[hidden]right-> POLICY_OPT
+POLICY_OPT -[hidden]right-> RESULTS
+CONFIG -[hidden]down-> NEURAL
+NEURAL -[hidden]down-> SIMULATION
+MODEL -[hidden]down-> OPTIMIZATION
+OPTIMIZATION -[hidden]down-> POLICY_OPT
+GENETIC -[hidden]down-> COST
+COST -[hidden]down-> RESULTS
+RESULTS_ROUTE_START -[hidden]down-> MODEL
+RESULTS_ROUTE_START -[hidden]right-> RESULTS_ROUTE_TOP
+GENETIC -[hidden]right-> RESULTS_ROUTE_TOP
+COST -[hidden]right-> RESULTS_ROUTE_MIDDLE
+RESULTS -[hidden]right-> RESULTS_ROUTE_BOTTOM
+RESULTS_ROUTE_TOP -[hidden]down-> RESULTS_ROUTE_MIDDLE
+RESULTS_ROUTE_MIDDLE -[hidden]down-> RESULTS_ROUTE_BOTTOM
+
+CONFIG -right-> MODEL : <back:#FFFFFF>validated values</back>
+GENETIC -left-> MODEL : <back:#FFFFFF>selector</back>
+MODEL -down-> OPTIMIZATION : <back:#FFFFFF>train</back>
+OPTIMIZATION -down-> POLICY_OPT : <back:#FFFFFF>evaluate</back>
+POLICY_OPT -left-> SIMULATION : <back:#FFFFFF>run episodes</back>
+NEURAL -down-> SIMULATION : <back:#FFFFFF>act</back>
+POLICY_OPT -left-> NEURAL : <back:#FFFFFF>setParameters</back>
+OPTIMIZATION .right[#80551D].> COST : <back:#FFFFFF>work counters</back>
+POLICY_OPT .right[#80551D].> RESULTS : <back:#FFFFFF>samples</back>
+COST .down[#80551D].> RESULTS : <back:#FFFFFF>scores + metrics</back>
+MODEL .up[#80551D]. RESULTS_ROUTE_START
+RESULTS_ROUTE_START .right[#80551D]. RESULTS_ROUTE_TOP
+RESULTS_ROUTE_TOP .down[#80551D]. RESULTS_ROUTE_MIDDLE
+RESULTS_ROUTE_MIDDLE .down[#80551D]. RESULTS_ROUTE_BOTTOM
+RESULTS_ROUTE_BOTTOM .left[#80551D].> RESULTS
+
+legend bottom center
+<color:#000000>━━▶</color> runtime dependency / call     <color:#000000>┄┄▶</color> result or measured data
+endlegend
+@enduml

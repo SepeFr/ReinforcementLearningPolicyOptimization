@@ -1,0 +1,45 @@
+@startuml
+!include _common.iuml
+skinparam nodesep 35
+skinparam ranksep 90
+title OptimizerMethod hierarchy
+
+abstract class "<b>OptimizerMethod «abstract»</b>\n+ ask() · tell() · reset()\n# tellImpl() · updateBestCandidate()" as OptimizerMethod <<abstract_family>>
+
+class "<b>HillClimbingMethod</b>" as HillClimbingMethod
+class "<b>SimulatedAnnealingMethod</b>" as SimulatedAnnealingMethod
+class "<b>NelderMeadMethod</b>" as NelderMeadMethod
+class "<b>GPSMethod</b>" as GPSMethod
+class "<b>PSOMethod</b>" as PSOMethod
+class "<b>SPSAMethod</b>" as SPSAMethod
+class "<b>CMAESMethod</b>" as CMAESMethod
+class "<b>OpenAIESMethod</b>" as OpenAIESMethod
+
+class "<b>StochasticHeuristic</b>\n<b>NelderMeadMethod</b>" as StochasticHeuristicNelderMeadMethod <<derived_family>>
+class "<b>ChangStochastic</b>\n<b>NelderMeadMethod</b>" as ChangStochasticNelderMeadMethod <<derived_family>>
+class "<b>RinottRankingSelection</b>\n<b>GPSMethod</b>" as RinottRankingSelectionGPSMethod <<derived_family>>
+
+HillClimbingMethod -up-|> OptimizerMethod
+SimulatedAnnealingMethod -up-|> OptimizerMethod
+NelderMeadMethod -up-|> OptimizerMethod
+GPSMethod -up-|> OptimizerMethod
+PSOMethod -up-|> OptimizerMethod
+SPSAMethod -up-|> OptimizerMethod
+CMAESMethod -up-|> OptimizerMethod
+OpenAIESMethod -up-|> OptimizerMethod
+
+StochasticHeuristicNelderMeadMethod -up-|> NelderMeadMethod
+ChangStochasticNelderMeadMethod -up-|> NelderMeadMethod
+RinottRankingSelectionGPSMethod -up-|> GPSMethod
+
+HillClimbingMethod -[hidden]right-> SimulatedAnnealingMethod
+SimulatedAnnealingMethod -[hidden]right-> NelderMeadMethod
+NelderMeadMethod -[hidden]right-> GPSMethod
+GPSMethod -[hidden]right-> PSOMethod
+PSOMethod -[hidden]right-> SPSAMethod
+SPSAMethod -[hidden]right-> CMAESMethod
+
+legend bottom center
+Open triangle points to the base class.
+endlegend
+@enduml

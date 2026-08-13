@@ -1,0 +1,52 @@
+@startuml
+!include _common.iuml
+skinparam nodesep 85
+title Model-selection components and data products
+
+rectangle "<b>ModelSelection</b>\nbatch orchestration · attempted budget\nsuccess/failure feedback · final callbacks\nowns selector and copied functions" as MODEL <<component>>
+
+rectangle "<b>ConfigurationSelector</b>\nask(max batch) · tell(feedback)\nfinite or budget-bounded stream" as SELECTOR <<bridge>>
+rectangle "<b>ModelSelectionFunctions</b>\nevaluate configuration (validation protocol)\ntrain final model · evaluate final model\ncaptures environment reference indirectly" as FUNCTIONS <<support>>
+rectangle "<b>Stopping criterion</b>\nbudget · no improvement · target\nfirst triggered reason" as STOPPING <<bridge>>
+
+rectangle "<b>ConfigurationSearchSpace</b>\naxes own domains\naxes borrow configuration fields" as SEARCH_SPACE <<support>>
+rectangle "<b>Configuration scoring</b>\nnatural mean + normalized costs\nlower score is better" as SCORING <<support>>
+rectangle "<b>ModelSelectionState</b>\nsuccessful history\nbest score + selection metrics" as STATE <<support>>
+rectangle "<b>Failure records</b>\ninvalid configuration\nevaluation / statistics / score" as FAILURES <<result>>
+
+rectangle "<b>ModelSelectionResult</b>\nbest · histories · final train/test · metrics · reason" as RESULT <<result>>
+
+' Invisible anchors route the caught-failure result above the state box.
+circle "<size:1> </size>" as FAILURE_ROUTE_LEFT #transparent;line:transparent
+circle "<size:1> </size>" as FAILURE_ROUTE_RIGHT #transparent;line:transparent
+
+SELECTOR -[hidden]right-> FUNCTIONS
+FUNCTIONS -[hidden]right-> STOPPING
+SEARCH_SPACE -[hidden]right-> SCORING
+SCORING -[hidden]right-> STATE
+STATE -[hidden]right-> FAILURES
+MODEL -[hidden]down-> FUNCTIONS
+SCORING -[hidden]down-> RESULT
+FAILURE_ROUTE_LEFT -[hidden]down-> STATE
+FAILURE_ROUTE_RIGHT -[hidden]down-> FAILURES
+FAILURE_ROUTE_LEFT -[hidden]right-> FAILURE_ROUTE_RIGHT
+
+MODEL *-down- SELECTOR : <back:#FFFFFF>owns</back>
+MODEL *-down- FUNCTIONS
+MODEL *-down- STOPPING : <back:#FFFFFF>creates during select()</back>
+SELECTOR -down-> SEARCH_SPACE : <back:#FFFFFF>uses axes</back>
+SELECTOR .right[#80551D].> FUNCTIONS : <back:#FFFFFF>configurations</back>
+FUNCTIONS .left[#80551D].> SELECTOR : <back:#FFFFFF>feedback</back>
+FUNCTIONS -down-> SCORING : <back:#FFFFFF>score evaluation</back>
+SCORING .right[#80551D].> STATE : <back:#FFFFFF>success</back>
+SCORING .right[#80551D]. FAILURE_ROUTE_LEFT
+FAILURE_ROUTE_LEFT .right[#80551D]. FAILURE_ROUTE_RIGHT : <back:#FFFFFF>caught failure</back>
+FAILURE_ROUTE_RIGHT .down[#80551D].> FAILURES
+STATE .down[#80551D].> RESULT
+FAILURES .down[#80551D].> RESULT
+FUNCTIONS .down[#80551D].> RESULT : <back:#FFFFFF>final train / test</back>
+
+legend bottom center
+<color:#000000>◆━━</color> ownership     <color:#000000>┄┄▶</color> ordered data / result
+endlegend
+@enduml

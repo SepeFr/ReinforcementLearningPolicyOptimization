@@ -1,0 +1,687 @@
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
+#include <eigen3/Eigen/Core>
+#include <exception>
+#include <filesystem>
+#include <iomanip>
+#include <initializer_list>
+#include <iostream>
+#include <limits>
+#include <memory>
+#include <optional>
+#include <random>
+#include <stdexcept>
+#include <string>
+#include <type_traits>
+#include <utility>
+#include <variant>
+#include <vector>
+#include "$environment_header"
+#include "ConfigurationEvaluationError.hpp"
+#include "computational_cost/ExecutionMetrics.hpp"
+#include "computational_cost/FeedForwardNetworkComputationCost.hpp"
+#include "model_selection/ConfigurationEvaluation.hpp"
+#include "model_selection/ModelConfiguration.hpp"
+#include "model_selection/ModelSelection.hpp"
+#include "model_selection/ModelSelectionStoppingConfiguration.hpp"
+#include "model_selection/ValidationProtocol.hpp"
+#include "model_selection/configuration_selector/ConfigurationSelector.hpp"
+#include "model_selection/model_selector/ModelSelectionFunctions.hpp"
+#include "model_selection/model_selector/ModelSelectionResult.hpp"
+#include "neural_networks/FeedForwardNetwork.hpp"
+#include "neural_networks/FeedForwardNetworkConfiguration.hpp"
+#include "neural_networks/ParametrizedPolicy.hpp"
+#include "neural_networks/PolicyConfiguration.hpp"
+#include "neural_networks/PolicyFactory.hpp"
+#include "neural_networks/PolicySerialization.hpp"
+#include "optimizer/BlackBoxProblem.hpp"
+#include "optimizer/InitializationConfiguration.hpp"
+#include "optimizer/MethodHyperparameters.hpp"
+#include "optimizer/ObjectiveEvaluation.hpp"
+#include "optimizer/Optimizer.hpp"
+#include "optimizer/OptimizerConfiguration.hpp"
+#include "optimizer/OptimizerFactory.hpp"
+#include "optimizer/OptimizerResult.hpp"
+#include "optimizer/StoppingConfiguration.hpp"
+#include "optimizer/optimizations_methods/gps/GPSConfiguration.hpp"
+#include "optimizer/optimizations_methods/nelder_mead/NelderMeadStoppingCriterion.hpp"
+#include "optimizer/optimizations_methods/simulated_annealing/CoolingFunctionConfiguration.hpp"
+#include "optimizer/surrogate_models/SurrogateModelConfiguration.hpp"
+#include "simulator/EpisodeResult.hpp"
+#include "simulator/EpisodeRunner.hpp"
+#include "validation/InvalidConfigurationError.hpp"
+
+namespace
+{
+$environment_aliases
+
+  using Protocol = ValidationProtocol< Scenario, Observation, Action, Environment >;
+
+  constexpr std::uint64_t master_seed = UINT64_C($master_seed);
+  constexpr std::uint64_t environment_seed_tag = UINT64_C($environment_seed_tag);
+  constexpr std::uint64_t training_seed_tag = UINT64_C(0x7A1A0001);
+  constexpr std::uint64_t validation_seed_tag = UINT64_C(0x7A1A0002);
+  constexpr std::uint64_t test_seed_tag = UINT64_C(0x7A1A0003);
+  constexpr std::uint64_t environment_id = UINT64_C($environment_id);
+  constexpr std::uint64_t algorithm_id = UINT64_C($algorithm_id);
+  constexpr std::uint64_t stopping_id = UINT64_C($stopping_id);
+  constexpr std::size_t training_scenario_count = $training_scenarios;
+  constexpr std::size_t validation_scenario_count = $validation_scenarios;
+  constexpr std::size_t test_scenario_count = $test_scenarios;
+  constexpr std::size_t runs_per_scenario = $runs_per_scenario;
+  constexpr std::size_t restart_count = $restart_count;
+  constexpr bool chang_job = $chang_job;
+  constexpr double chang_objective_offset = $chang_objective_offset;
+
+  struct ScenarioSets
+  {
+    std::vector< Scenario > training;
+    std::vector< Scenario > validation;
+    std::vector< Scenario > test;
+  };
+
+  class VectorConfigurationSelector final : public ConfigurationSelector
+  {
+    public:
+    explicit VectorConfigurationSelector( std::vector< ModelConfiguration > configurations ) :
+      configurations_( std::move( configurations ) )
+    {}
+
+    bool requiresStoppingBudget() const noexcept override
+    {
+      return false;
+    }
+
+    bool hasNext() const override
+    {
+      return next_index_ < configurations_.size();
+    }
+
+    std::vector< ModelConfiguration > ask( std::size_t maximum_batch_size ) override
+    {
+      if ( maximum_batch_size == 0 )
+      {
+        throw std::invalid_argument( "Configuration batch size must be positive" );
+      }
+
+      std::vector< ModelConfiguration > result;
+      result.reserve( maximum_batch_size );
+      while ( result.size() < maximum_batch_size && hasNext() )
+      {
+        result.push_back( configurations_[next_index_++] );
+      }
+      return result;
+    }
+
+    void tell( const std::vector< ConfigurationFeedback > & ) override
+    {}
+
+    private:
+    std::vector< ModelConfiguration > configurations_;
+    std::size_t next_index_ = 0;
+  };
+
+  std::uint64_t deriveSeed( std::initializer_list< std::uint64_t > components )
+  {
+    using SeedWord = std::seed_seq::result_type;
+    std::vector< SeedWord > material;
+    material.reserve( 2 * ( components.size() + 1 ) );
+
+    const auto append = [&]( std::uint64_t value )
+    {
+      material.push_back( static_cast< SeedWord >( value & UINT64_C(0xFFFFFFFF) ) );
+      material.push_back( static_cast< SeedWord >( value >> 32U ) );
+    };
+
+    append( master_seed );
+    for ( const std::uint64_t component : components )
+    {
+      append( component );
+    }
+
+    std::seed_seq sequence( material.begin(), material.end() );
+    std::mt19937_64 generator( sequence );
+    return generator();
+  }
+
+$scenario_factory
+
+$environment_factory
+
+  ScenarioSets makeScenarioSets()
+  {
+    return ScenarioSets{
+      makeScenarios( training_scenario_count, deriveSeed( { environment_seed_tag, training_seed_tag } ) ),
+      makeScenarios( validation_scenario_count, deriveSeed( { environment_seed_tag, validation_seed_tag } ) ),
+      makeScenarios( test_scenario_count, deriveSeed( { environment_seed_tag, test_seed_tag } ) )
+    };
+  }
+
+  PolicyConfiguration makePolicyConfiguration()
+  {
+    PolicyConfiguration configuration;
+    configuration.type = PolicyType::FeedForwardEigen;
+    configuration.network.input_size = $network_input_size;
+    configuration.network.hidden_layers = $network_hidden_layers;
+    configuration.network.output_size = $network_output_size;
+    configuration.network.hidden_activation = $hidden_activation;
+    configuration.network.output_activation = $output_activation;
+    configuration.network.use_bias = $use_bias;
+    configuration.regularization_strategy = $regularization_type;
+    configuration.regularization_coefficient = $regularization_coefficient;
+    return configuration;
+  }
+
+  std::vector< StoppingConfiguration > makeExternalStopping()
+  {
+$external_stopping
+  }
+
+  void seedGpsSearch( GPSSearchConfiguration &search, std::size_t seed )
+  {
+    std::visit(
+      [seed]( auto &configuration )
+      {
+        using Search = std::decay_t< decltype( configuration ) >;
+        if constexpr ( std::is_same_v< Search, RandomMeshGPSSearchConfiguration > ||
+                       std::is_same_v< Search, LatinHypercubeMeshGPSSearchConfiguration > )
+        {
+          configuration.random_seed = seed;
+        }
+        else if constexpr ( std::is_same_v< Search, SuccessfulDirectionGPSSearchConfiguration > )
+        {
+          configuration.initial_search.random_seed = seed;
+        }
+        else if constexpr ( std::is_same_v< Search, SurrogateGPSSearchConfiguration > )
+        {
+          configuration.random_points_strategy.random_seed = seed;
+        }
+      },
+      search );
+  }
+
+  void applySeed( OptimizerConfiguration &configuration, std::uint64_t seed )
+  {
+    const std::size_t represented_seed = static_cast< std::size_t >( seed );
+    configuration.random_seed = represented_seed;
+
+    std::visit(
+      [represented_seed]( auto &initialization )
+      {
+        using Initialization = std::decay_t< decltype( initialization ) >;
+        if constexpr ( std::is_same_v< Initialization, RandomInitializationConfiguration > ||
+                       std::is_same_v< Initialization, FeedForwardInitializationConfiguration > )
+        {
+          initialization.random_seed = represented_seed;
+        }
+      },
+      configuration.initialization );
+
+    std::visit(
+      [represented_seed]( auto &hyperparameters )
+      {
+        using Hyperparameters = std::decay_t< decltype( hyperparameters ) >;
+        if constexpr ( std::is_same_v< Hyperparameters, ChangStochasticNelderMeadHyperparameters > ||
+                       std::is_same_v< Hyperparameters, OpenAIESHyperparameters > ||
+                       std::is_same_v< Hyperparameters, CMAESHyperparameters > ||
+                       std::is_same_v< Hyperparameters, PSOHyperparameters > ||
+                       std::is_same_v< Hyperparameters, SPSAHyperparameters > )
+        {
+          hyperparameters.random_seed = represented_seed;
+        }
+
+        if constexpr ( std::is_same_v< Hyperparameters, GeneralizedPatternSearchHyperparameters > ||
+                       std::is_same_v< Hyperparameters, RinottRankingSelectionGPSHyperparameters > )
+        {
+          seedGpsSearch( hyperparameters.search, represented_seed );
+        }
+
+        if constexpr ( std::is_same_v< Hyperparameters, NelderMeadHyperparameters > ||
+                       std::is_same_v< Hyperparameters, StochasticHeuristicNelderMeadHyperparameters > ||
+                       std::is_same_v< Hyperparameters, ChangStochasticNelderMeadHyperparameters > )
+        {
+          std::visit(
+            [represented_seed]( auto &initialization )
+            {
+              using Initialization = std::decay_t< decltype( initialization ) >;
+              if constexpr ( std::is_same_v< Initialization, LatinHypercubeLocalSimplexConfiguration > ||
+                             std::is_same_v< Initialization, LatinHypercubeGlobalSimplexConfiguration > )
+              {
+                initialization.random_seed = represented_seed;
+              }
+            },
+            hyperparameters.initialization );
+        }
+      },
+      configuration.hyperparameters );
+  }
+
+  void transformChangTarget( OptimizerConfiguration &configuration )
+  {
+    if constexpr ( chang_job )
+    {
+      for ( StoppingConfiguration &criterion : configuration.stopping )
+      {
+        std::visit(
+          []( auto &selected )
+          {
+            using Selected = std::decay_t< decltype( selected ) >;
+            if constexpr ( std::is_same_v< Selected, TargetValueStoppingConfiguration > )
+            {
+              selected.target_value = chang_objective_offset - selected.target_value;
+            }
+          },
+          criterion );
+      }
+    }
+  }
+
+  double positiveRegularization(
+    Eigen::Ref< const Eigen::VectorXd > weights, double scale, RegularizationType type )
+  {
+    switch ( type )
+    {
+      case RegularizationType::L1_Regularization:
+        return scale * weights.cwiseAbs().sum();
+      case RegularizationType::L2_Regularization:
+        return scale * weights.squaredNorm();
+    }
+    throw std::invalid_argument( "Unsupported regularization type" );
+  }
+
+  template< typename ScenarioType, typename ObservationType,
+            typename ActionType, typename EnvironmentType >
+  class PositivePolicyProblem final : public BlackBoxProblem
+  {
+    public:
+    using Policy = ParametrizedPolicy< ObservationType, ActionType >;
+
+    PositivePolicyProblem(
+      PolicyConfiguration configuration, std::vector< ScenarioType > scenarios,
+      std::size_t number_of_runs, EnvironmentType &environment, double objective_offset ) :
+        BlackBoxProblem(
+          FeedForwardNetworkConfiguration::parameterCountFromConfiguration( configuration.network ),
+          OptimizationDirection::Minimize ),
+        configuration_( std::move( configuration ) ),
+        policy_( PolicyFactory::create< ObservationType, ActionType >( configuration_ ) ),
+        regularization_network_( PolicyFactory::create( configuration_ ) ),
+        scenarios_( std::move( scenarios ) ),
+        number_of_runs_( number_of_runs ),
+        macs_per_inference_(
+          FeedForwardNetworkComputationCost::macsPerInference( configuration_.network ) ),
+        environment_( environment ),
+        objective_offset_( objective_offset )
+    {
+      if ( scenarios_.empty() || number_of_runs_ == 0 || !std::isfinite( objective_offset_ ) )
+      {
+        throw std::invalid_argument( "Invalid positive policy problem configuration" );
+      }
+    }
+
+    ObjectiveEvaluation evaluate( Eigen::Ref< const Eigen::VectorXd > parameters ) override
+    {
+      policy_->setParameters( parameters );
+      double regularization_penalty = 0.0;
+      if ( configuration_.regularization_coefficient != 0.0 )
+      {
+        regularization_network_->setParameters( parameters );
+        regularization_penalty = positiveRegularization(
+          regularization_network_->weightsParameters(),
+          configuration_.regularization_coefficient,
+          configuration_.regularization_strategy );
+      }
+
+      ObjectiveEvaluation evaluation;
+      for ( const ScenarioType &scenario : scenarios_ )
+      {
+        for ( std::size_t run = 0; run < number_of_runs_; ++run )
+        {
+          using Result = EpisodeResult< typename EnvironmentType::TerminationReason >;
+          using Reason = typename EnvironmentType::TerminationReason;
+          try
+          {
+            const Result result = EpisodeRunner< EnvironmentType, Policy, Result >::run(
+              environment_, *policy_, scenario );
+            if ( !std::in_range< std::uint64_t >( result.steps ) )
+            {
+              throw std::overflow_error( "Episode step count is not representable" );
+            }
+
+            const std::uint64_t steps = static_cast< std::uint64_t >( result.steps );
+            ExecutionMetrics metrics;
+            metrics.addEpisode( steps );
+            metrics.addPolicyInferences( steps, macs_per_inference_ );
+            evaluation.appendExecutionMetrics( metrics );
+            evaluation.appendSample(
+              objective_offset_ - result.total_reward + regularization_penalty,
+              result.termination_reason == Reason::Failure );
+          }
+          catch ( const std::overflow_error & )
+          {
+            evaluation.appendSample( std::numeric_limits< double >::quiet_NaN(), true );
+            return evaluation;
+          }
+        }
+      }
+      return evaluation;
+    }
+
+    private:
+    PolicyConfiguration configuration_;
+    std::unique_ptr< Policy > policy_;
+    std::unique_ptr< FeedForwardNetwork > regularization_network_;
+    std::vector< ScenarioType > scenarios_;
+    std::size_t number_of_runs_;
+    std::uint64_t macs_per_inference_;
+    EnvironmentType &environment_;
+    double objective_offset_;
+  };
+
+  OptimizerResult trainModel(
+    const ModelConfiguration &configuration,
+    const std::vector< Scenario > &scenarios,
+    Environment &environment )
+  {
+    if constexpr ( chang_job )
+    {
+      using Problem = PositivePolicyProblem< Scenario, Observation, Action, Environment >;
+      auto problem = std::make_unique< Problem >(
+        configuration.policy, scenarios, runs_per_scenario,
+        environment, chang_objective_offset );
+      std::unique_ptr< Optimizer > optimizer = OptimizerFactory::create(
+        std::move( problem ), configuration.optimizer_configuration );
+      return optimizer->optimize();
+    }
+    else
+    {
+      return Protocol::train(
+        configuration, scenarios, environment, runs_per_scenario );
+    }
+  }
+
+  std::vector< ModelConfiguration > buildConfigurations()
+  {
+    const PolicyConfiguration policy = makePolicyConfiguration();
+    const std::size_t parameter_count =
+      FeedForwardNetworkConfiguration::parameterCountFromConfiguration( policy.network );
+    std::vector< ModelConfiguration > configurations;
+
+    const auto append = [&]( MethodHyperparameters hyperparameters )
+    {
+      FeedForwardInitializationConfiguration initialization;
+      initialization.network = policy.network;
+      initialization.type = $initialization_type;
+      initialization.random_seed = 0;
+
+      OptimizerConfiguration optimizer;
+      optimizer.hyperparameters = std::move( hyperparameters );
+      optimizer.initialization = std::move( initialization );
+      optimizer.stopping = makeExternalStopping();
+      optimizer.random_seed = configurations.size();
+
+      ModelConfiguration configuration;
+      configuration.optimizer_configuration = std::move( optimizer );
+      configuration.policy = policy;
+      configurations.push_back( std::move( configuration ) );
+    };
+
+$registry_entries
+
+    return configurations;
+  }
+
+  ConfigurationEvaluation evaluateConfiguration(
+    const ModelConfiguration &unseeded_configuration,
+    const ScenarioSets &scenarios )
+  {
+    try
+    {
+      const std::size_t configuration_id =
+        unseeded_configuration.optimizer_configuration.random_seed;
+      ObjectiveEvaluation aggregate_validation;
+      ExecutionMetrics aggregate_metrics;
+
+      for ( std::size_t restart = 0; restart < restart_count; ++restart )
+      {
+        ModelConfiguration configuration = unseeded_configuration;
+        applySeed(
+          configuration.optimizer_configuration,
+          deriveSeed( {
+            UINT64_C(0x4D53454C), environment_id, algorithm_id,
+            stopping_id, configuration_id, restart
+          } ) );
+        transformChangTarget( configuration.optimizer_configuration );
+
+        Environment training_environment = makeEnvironment(
+          deriveSeed( { UINT64_C(0x4D535452), environment_id, restart } ) );
+        Environment validation_environment = makeEnvironment(
+          deriveSeed( { UINT64_C(0x4D535641), environment_id, restart } ) );
+
+        OptimizerResult training = trainModel(
+          configuration, scenarios.training, training_environment );
+        ObjectiveEvaluation validation = Protocol::evaluate(
+          configuration, training, scenarios.validation,
+          validation_environment, runs_per_scenario );
+
+        aggregate_metrics.append( training.execution_metrics );
+        aggregate_metrics.append( validation.executionMetrics() );
+        aggregate_validation.append( validation );
+      }
+
+      if ( aggregate_validation.sampleCount() == 0 || !aggregate_validation.allFinite() )
+      {
+        throw ConfigurationEvaluationError(
+          "Validation produced no finite samples",
+          ConfigurationEvaluationErrorKind::NonFiniteValidationStatistics );
+      }
+
+      const double mean = aggregate_validation.meanValue();
+      const double standard_deviation = aggregate_validation.standardDeviation();
+      const double variance = standard_deviation * standard_deviation;
+      if ( !std::isfinite( mean ) || !std::isfinite( variance ) )
+      {
+        throw ConfigurationEvaluationError(
+          "Validation statistics are not finite",
+          ConfigurationEvaluationErrorKind::NonFiniteValidationStatistics );
+      }
+      return ConfigurationEvaluation{ mean, variance, aggregate_metrics, std::nullopt };
+    }
+    catch ( const InvalidConfigurationError & )
+    {
+      throw;
+    }
+    catch ( const ConfigurationEvaluationError & )
+    {
+      throw;
+    }
+    catch ( const std::exception &error )
+    {
+      throw ConfigurationEvaluationError( error.what() );
+    }
+  }
+
+  std::string failureKindName( ModelSelectionFailureKind kind )
+  {
+    switch ( kind )
+    {
+      case ModelSelectionFailureKind::InvalidConfiguration:
+        return "InvalidConfiguration";
+      case ModelSelectionFailureKind::EvaluationFailure:
+        return "EvaluationFailure";
+      case ModelSelectionFailureKind::NonFiniteValidationStatistics:
+        return "NonFiniteValidationStatistics";
+      case ModelSelectionFailureKind::NonFiniteSelectionScore:
+        return "NonFiniteSelectionScore";
+    }
+    return "Unknown";
+  }
+
+  std::string terminationReasonName( OptimizationTerminationReason reason )
+  {
+    switch ( reason )
+    {
+      case OptimizationTerminationReason::None:
+        return "None";
+      case OptimizationTerminationReason::MethodConverged:
+        return "MethodConverged";
+      case OptimizationTerminationReason::MaximumIterations:
+        return "MaximumIterations";
+      case OptimizationTerminationReason::MaximumEvaluations:
+        return "MaximumEvaluations";
+      case OptimizationTerminationReason::NoImprovement:
+        return "NoImprovement";
+      case OptimizationTerminationReason::TargetReached:
+        return "TargetReached";
+      case OptimizationTerminationReason::ConfigurationSelectorExhausted:
+        return "ConfigurationSelectorExhausted";
+    }
+    return "Unknown";
+  }
+
+  std::string oneLine( std::string value )
+  {
+    for ( char &character : value )
+    {
+      if ( character == '\t' || character == '\n' || character == '\r' )
+      {
+        character = ' ';
+      }
+    }
+    return value;
+  }
+
+  ModelSelectionResult runSelection()
+  {
+    const ScenarioSets scenarios = makeScenarioSets();
+    std::vector< ModelConfiguration > configurations = buildConfigurations();
+    if ( configurations.empty() )
+    {
+      throw std::runtime_error( "The generated configuration registry is empty" );
+    }
+
+    ModelSelectionFunctions functions;
+    functions.optimization_direction = OptimizationDirection::Maximize;
+    functions.evaluate_configuration =
+      [&]( const ModelConfiguration &configuration )
+      {
+        return evaluateConfiguration( configuration, scenarios );
+      };
+    functions.train_final_model =
+      [&]( const ModelConfiguration &unseeded_configuration )
+      {
+        const std::size_t configuration_id =
+          unseeded_configuration.optimizer_configuration.random_seed;
+        ModelConfiguration configuration = unseeded_configuration;
+        applySeed(
+          configuration.optimizer_configuration,
+          deriveSeed( {
+            UINT64_C(0x46494E54), environment_id, algorithm_id,
+            stopping_id, configuration_id
+          } ) );
+        transformChangTarget( configuration.optimizer_configuration );
+
+        std::vector< Scenario > final_training_scenarios = scenarios.training;
+        final_training_scenarios.insert(
+          final_training_scenarios.end(),
+          scenarios.validation.begin(), scenarios.validation.end() );
+        Environment environment = makeEnvironment(
+          deriveSeed( { UINT64_C(0x46454E56), environment_id } ) );
+        return trainModel( configuration, final_training_scenarios, environment );
+      };
+    functions.evaluate_final_model =
+      [&]( const ModelConfiguration &configuration, const OptimizerResult &training )
+      {
+        Environment environment = makeEnvironment(
+          deriveSeed( { UINT64_C(0x54455354), environment_id } ) );
+        return Protocol::evaluate(
+          configuration, training, scenarios.test,
+          environment, runs_per_scenario );
+      };
+
+    const std::size_t budget = std::min< std::size_t >(
+      $maximum_configurations, configurations.size() );
+    std::vector< ModelSelectionStoppingConfiguration > stopping{
+      ModelSelectionBudgetCriterionConfiguration{ budget },
+      ModelSelectionNoImprovementCriterionConfiguration{
+        $model_selection_patience, $model_selection_threshold
+      }
+    };
+
+    auto selector = std::make_unique< VectorConfigurationSelector >(
+      std::move( configurations ) );
+    ModelSelection selection(
+      std::move( selector ), std::move( functions ),
+      std::move( stopping ), $model_selection_batch_size );
+    return selection.select();
+  }
+
+  void printResult( const ModelSelectionResult &result )
+  {
+    std::cout << std::setprecision( std::numeric_limits< double >::max_digits10 );
+    for ( const ModelSelectionRecord &record : result.evaluated_configurations )
+    {
+      const ExecutionMetrics &metrics = record.evaluation.execution_metrics;
+      std::cout
+        << "RECORD\t" << record.configuration.optimizer_configuration.random_seed
+        << '\t' << record.evaluation.validation_mean
+        << '\t' << record.evaluation.validation_variance
+        << '\t' << *record.evaluation.selection_score
+        << '\t' << metrics.number_of_episodes
+        << '\t' << metrics.number_of_simulation_steps
+        << '\t' << metrics.number_of_policy_inferences
+        << '\t' << metrics.number_of_neural_network_macs
+        << '\n';
+    }
+
+    for ( const ModelSelectionFailureRecord &failure : result.failed_configurations )
+    {
+      std::cout
+        << "FAILURE\t" << failure.configuration.optimizer_configuration.random_seed
+        << '\t' << failureKindName( failure.kind )
+        << '\t' << oneLine( failure.message )
+        << '\n';
+    }
+
+    const ExecutionMetrics &metrics = result.total_execution_metrics;
+    std::cout
+      << "SUMMARY\t" << result.best_configuration.optimizer_configuration.random_seed
+      << '\t' << result.test_evaluation.meanValue()
+      << '\t' << result.test_evaluation.standardDeviation()
+      << '\t' << result.attempted_configuration_count
+      << '\t' << terminationReasonName( result.termination_reason )
+      << '\t' << result.final_training_result.number_of_iterations
+      << '\t' << result.final_training_result.number_of_evaluations
+      << '\t' << metrics.number_of_episodes
+      << '\t' << metrics.number_of_simulation_steps
+      << '\t' << metrics.number_of_policy_inferences
+      << '\t' << metrics.number_of_neural_network_macs
+      << '\n';
+  }
+}
+
+int main( int argc, char **argv )
+{
+  try
+  {
+    if ( argc != 2 )
+    {
+      throw std::invalid_argument( "Expected the output policy path" );
+    }
+
+    const ModelSelectionResult result = runSelection();
+    PolicySerialization::serialize(
+      std::filesystem::path( argv[1] ),
+      result.best_configuration.policy,
+      result.final_training_result.best_candidate.parameters );
+    printResult( result );
+    return EXIT_SUCCESS;
+  }
+  catch ( const std::exception &error )
+  {
+    std::cerr << error.what() << '\n';
+    return EXIT_FAILURE;
+  }
+}

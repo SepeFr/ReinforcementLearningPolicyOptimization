@@ -1,0 +1,169 @@
+/**
+ * @page optimization_method_states_chapter Optimization method state machines
+ *
+ * Every concrete method implements @ref OptimizerMethod in minimization space.
+ * State survives from one `ask()` to its matching `tell()` and across logical
+ * iterations. @ref OptimizerMethodUpdate distinguishes a feedback batch from a
+ * completed algorithm iteration.
+ *
+ * @image html optimizer_method_hierarchy.svg "OptimizerMethod inheritance, including GPS and Nelder--Mead variants."
+ *
+ * Strategy objects isolate construction-time choices from method state:
+ *
+ * @image html optimizer_strategy_families.svg "Initialization, neighborhood, cooling, and external-stopping strategy families."
+ *
+ * GPS adds search, poll, surrogate, and stochastic convergence families:
+ *
+ * @image html gps_strategy_families.svg "GPS strategy and surrogate class families and ownership."
+ *
+ * @section method_initialization Initialization and local sampling
+ *
+ * @ref InitialParametersStrategy returns vectors in request order and is reset
+ * before each optimizer run. @ref RandomInitialization samples each coordinate
+ * from configured or problem-derived bounds. @ref FeedForwardInitialization
+ * uses @ref ParameterLayout to apply separate weight and bias ranges.
+ * @ref ProvidedInitialization and @ref ProvidedInitializationVector consume
+ * caller-provided values in stored order.
+ *
+ * @ref NeighborhoodStrategy returns displacement vectors. Gaussian, uniform,
+ * and coordinate strategies define independent local perturbations.
+ * @ref LatinHypercubeUniformNeighborhood and
+ * @ref LatinHypercubeGaussianNeighborhood transform designs produced by
+ * @ref LatinHypercubeSampler. Each sampler divides every dimension into equal
+ * strata, takes one value per stratum, and independently permutes coordinates
+ * by dimension; seed restoration makes repeated runs deterministic.
+ *
+ * @section method_hill_sa Hill climbing and simulated annealing
+ *
+ * @ref HillClimbingMethod first requests one initial point. Each subsequent
+ * batch contains `number_of_neighbors` displacements multiplied by
+ * `neighborhood_scale` and added to the current point. @ref extractBestCandidate
+ * selects the first lowest-mean successful neighbor. Strict improvement replaces
+ * the current point; exact equality is accepted only when
+ * `accept_equal_candidates` is true. A batch with no successful neighbor leaves
+ * the current point unchanged and still completes an iteration.
+ *
+ * @ref SimulatedAnnealingMethod requests one proposal per iteration. A lower
+ * successful mean is accepted. For \f$\Delta=f(x')-f(x)\geq0\f$, acceptance
+ * uses \f$\exp(-\Delta/T_k)\f$. Failed proposals are rejected. Time starts at
+ * one and advances after every proposal feedback. @ref CoolingFunction owns the
+ * temperature contract; @ref GeometricCooling, @ref LinearCooling,
+ * @ref LogarithmicCooling, @ref ReciprocalCooling, @ref ExponentialCooling, and
+ * @ref InverseLogarithmicCooling implement the configured schedules. The strict
+ * internal test is `temperature(time) < minimal_temperature`.
+ *
+ * @section method_nelder_mead Nelder--Mead family
+ *
+ * @ref NelderMeadMethod stores \f$n+1\f$ evaluated vertices. Initial simplex
+ * strategies construct a classical local simplex, a full-rank local or global
+ * Latin hypercube simplex, or consume a provided simplex. Initial evaluation is
+ * a setup batch and leaves the logical iteration count unchanged.
+ *
+ * After sorting by increasing mean, the method computes the centroid excluding
+ * the worst vertex. @ref NelderMeadMethod::Phase then follows these transitions:
+ *
+ * | Feedback condition | Next operation |
+ * |---|---|
+ * | Reflection is better than the best | Evaluate expansion; retain the better of expansion and reflection. |
+ * | Reflection lies between best and second-worst | Replace the worst with reflection. |
+ * | Reflection lies between second-worst and worst | Evaluate outside contraction. |
+ * | Reflection fails or is no better than the worst | Evaluate inside contraction. |
+ * | Outside contraction fails its comparison | Replace the worst with reflection. |
+ * | Inside contraction fails its comparison | Shrink every non-best vertex. |
+ *
+ * The exact reflection, expansion, contraction, and shrink formulas are
+ * canonical on @ref NelderMeadMethod. A replacement or completed shrink advances
+ * the logical iteration, reorders the simplex, and evaluates the selected
+ * @ref NelderMeadStoppingStrategy.
+ *
+ * @ref StochasticHeuristicNelderMeadMethod overlays targeted reevaluation phases.
+ * It can refresh an unchanged best, refresh values involved in contraction, and
+ * reevaluate the shrink anchor. A successful refresh replaces the previous
+ * observation directly.
+ *
+ * @ref ChangStochasticNelderMeadMethod stores cumulative outer-replication
+ * aggregates. At base iteration \f$k\f$, each logical candidate targets
+ * \f$N_k=\max(N_{min},\lceil\sqrt{k+1}\rceil)\f$. Existing vertices request
+ * only missing replications. Each black-box evaluation mean counts as one outer
+ * observation. Contraction failure enters repeated adaptive random search until
+ * a candidate mean is no greater than the current worst.
+ *
+ * @section method_gps Generalized pattern search
+ *
+ * @ref GPSMethod constructs \f$D=GZ\f$ once the candidate dimension is known.
+ * @ref MinimalPositiveBasisConfiguration uses \f$Z=[I,-\mathbf 1]\f$;
+ * @ref SymmetricPositiveBasisConfiguration uses \f$Z=[I,-I]\f$. With incumbent
+ * \f$x_k\f$ and mesh size \f$\delta_k\f$, mesh candidates have the form
+ * \f$x_k+\delta_kDy\f$ for integer coefficients \f$y\f$.
+ *
+ * The phase cycle is initialization, optional search, then poll. Empty search
+ * moves directly to poll. A strict search improvement accepts its best candidate,
+ * expands the mesh by division by `mesh_size_adjustment`, increments \f$k\f$,
+ * and skips poll. An unsuccessful search preserves the iteration and enters
+ * poll. Poll success expands the mesh; poll failure contracts it by multiplication.
+ * Either poll outcome completes the iteration. Mesh convergence requires at
+ * least one completed iteration and a strict crossing of `stopping_mesh_size`.
+ *
+ * @ref RandomMeshGPSSearchStrategy samples nonzero integer coefficients from an
+ * L1 ball. @ref LatinHypercubeMeshGPSSearchStrategy projects stratified samples
+ * into that ball. @ref SuccessfulDirectionGPSSearchStrategy reuses the most
+ * recent improving mesh direction. @ref SurrogateGPSSearchStrategy collects all
+ * successful search and poll observations, fits its owned @ref SurrogateModel,
+ * and returns the leading predicted fraction of a random mesh pool. Fit failure
+ * returns the complete pool.
+ *
+ * @ref LocalQuadraticSurrogate fits a regularized quadratic in local coordinates
+ * \f$\widetilde{x}=(x-x_k)/\rho_k\f$. @ref RBFSurrogate selects an affine core, extends it by
+ * maximin distance, and solves its documented radial-basis block system. Both
+ * expose fit failure as `false`, leaving search able to use the unranked pool.
+ *
+ * @ref RinottRankingSelectionGPSMethod wraps each nonempty search or poll batch.
+ * It removes exact duplicate alternatives, appends the incumbent, and requests
+ * `initial_sample_size` outer replications per alternative. The second-stage
+ * target
+ * \f$N_i=\max(n_0,\lceil(hS_i/\delta_r)^2\rceil)\f$ uses a numerically integrated
+ * and bracketed Rinott constant. Failed replication makes that alternative
+ * ineligible; incumbent failure aborts selection. After choosing the lowest
+ * cumulative mean, significance and indifference are multiplied by their decay
+ * factors and the underlying GPS transition completes.
+ *
+ * @section method_population Population and stochastic-gradient methods
+ *
+ * @ref PSOMethod keeps positions, velocities, personal bests, and one global
+ * best in stable particle-index order. Its coordinate update is documented on
+ * the class. Initialization establishes best state without completing an
+ * iteration. Later successful feedback updates personal and global records;
+ * failed particles retain their previous bests.
+ *
+ * @ref OpenAIESMethod emits adjacent antithetic pairs
+ * \f$\theta+\sigma\varepsilon_i,\theta-\sigma\varepsilon_i\f$. Raw utilities negate successful
+ * minimization means. Centered-rank utilities map successful candidates from
+ * `0.5` for best to `-0.5` for worst; fewer than two successes yield zero
+ * utilities. A pair contributes to the mean update only when both evaluations
+ * succeed. The class page defines the smoothed-gradient scale and update.
+ *
+ * @ref SPSAMethod emits the positive perturbation before the negative one for a
+ * single Rademacher vector. When both succeed it applies the simultaneous
+ * gradient estimate documented on the class. Failure of either side retains the
+ * current point while completing the iteration.
+ *
+ * @section method_cmaes CMA-ES distribution state
+ *
+ * @ref CMAESMethod owns mean \f$m_k\f$, global scale \f$\sigma_k\f$, covariance
+ * \f$C_k=B_kD_k^2B_k^T\f$, evolution paths \f$p_{\sigma,k},p_{c,k}\f$, recombination weights,
+ * and current population buffers. `ask()` samples
+ * \f$x_i^k=m_k+\sigma_kB_kD_kz_i\f$ in random-draw order. The class documentation gives
+ * the exact definitions of \f$\mu\f$, \f$w_i\f$, and \f$\mu_{eff}\f$.
+ *
+ * Successful feedback is sorted by minimization mean. Fewer than \f$\mu\f$
+ * successes leave distribution state unchanged while completing the logical
+ * generation. Otherwise the implementation updates, in order: weighted mean,
+ * whitened step-size path, global scale, \f$h_\sigma\f$ gate, covariance path,
+ * covariance retention plus rank-one and rank-mu terms, then the symmetric
+ * eigendecomposition. The update methods on @ref CMAESMethod are the canonical
+ * source for every coefficient and formula. Non-positive or non-finite covariance
+ * eigenvalues raise @ref ConfigurationEvaluationError.
+ *
+ * @see @ref optimization_lifecycle_chapter "Optimization lifecycle"
+ * @see @ref technical_chapters "Technical Chapters"
+ */

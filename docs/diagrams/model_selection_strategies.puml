@@ -1,0 +1,50 @@
+@startuml
+!include _common.iuml
+skinparam nodesep 35
+skinparam ranksep 75
+title Model-selection strategy families
+
+package "Configuration generation" as PKG_GENERATION {
+  abstract class "<b>ConfigurationSelector «abstract»</b>\nhasNext() · ask(maximum_batch_size)\ntell(ordered ConfigurationFeedback)" as ConfigurationSelector <<abstract_family>>
+  class "<b>GridConfigurationSelector</b>" as GridConfigurationSelector
+  class "<b>RandomConfigurationSelector</b>" as RandomConfigurationSelector
+  class "<b>RandomWalkConfigurationSelector</b>" as RandomWalkConfigurationSelector
+  class "<b>GeneticConfigurationSelector</b>" as GeneticConfigurationSelector
+  class "<b>ConfigurationSearchSpace<Axes...></b>\nowns axis domains · borrows distinct configuration fields" as ConfigurationSearchSpace
+
+  GridConfigurationSelector -up-|> ConfigurationSelector
+  RandomConfigurationSelector -up-|> ConfigurationSelector
+  RandomWalkConfigurationSelector -up-|> ConfigurationSelector
+  GeneticConfigurationSelector -up-|> ConfigurationSelector
+  GridConfigurationSelector ..> ConfigurationSearchSpace
+  RandomConfigurationSelector ..> ConfigurationSearchSpace
+  RandomWalkConfigurationSelector ..> ConfigurationSearchSpace
+  GeneticConfigurationSelector ..> ConfigurationSearchSpace
+  GridConfigurationSelector -[hidden]right-> RandomConfigurationSelector
+  RandomConfigurationSelector -[hidden]right-> RandomWalkConfigurationSelector
+  RandomWalkConfigurationSelector -[hidden]right-> GeneticConfigurationSelector
+}
+
+package "Selection stopping" as PKG_STOPPING {
+  abstract class "<b>ModelSelectionStoppingStrategy</b>\nshouldStop(current feedback)\nterminationReason()" as ModelSelectionStoppingStrategy <<abstract_family>>
+  class "<b>ModelSelectionBudgetCriterion</b>" as ModelSelectionBudgetCriterion
+  class "<b>ModelSelectionNoImprovementCriterion</b>" as ModelSelectionNoImprovementCriterion
+  class "<b>ModelSelectionTargetScoreCriterion</b>" as ModelSelectionTargetScoreCriterion
+  class "<b>ModelSelectionStoppingCriterion</b>\nowns distinct strategies · preserves caller order" as ModelSelectionStoppingCriterion
+
+  ModelSelectionBudgetCriterion -up-|> ModelSelectionStoppingStrategy
+  ModelSelectionNoImprovementCriterion -up-|> ModelSelectionStoppingStrategy
+  ModelSelectionTargetScoreCriterion -up-|> ModelSelectionStoppingStrategy
+  ModelSelectionBudgetCriterion ..> ModelSelectionStoppingCriterion
+  ModelSelectionNoImprovementCriterion ..> ModelSelectionStoppingCriterion
+  ModelSelectionTargetScoreCriterion ..> ModelSelectionStoppingCriterion
+  ModelSelectionBudgetCriterion -[hidden]right-> ModelSelectionNoImprovementCriterion
+  ModelSelectionNoImprovementCriterion -[hidden]right-> ModelSelectionTargetScoreCriterion
+}
+
+PKG_GENERATION -[hidden]right-> PKG_STOPPING
+
+legend bottom center
+Open triangle points to the abstract interface. Dashed links show use or ownership by the supporting aggregate.
+endlegend
+@enduml

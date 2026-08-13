@@ -1,0 +1,134 @@
+' Shared palette and rendering rules matching the existing SVG diagrams.
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam roundcorner 10
+skinparam defaultFontName sans-serif
+skinparam defaultFontColor #000000
+skinparam defaultFontSize 14
+skinparam TitleFontName sans-serif
+skinparam TitleFontColor #000000
+skinparam TitleFontSize 19
+skinparam TitleFontStyle bold
+skinparam ArrowColor #000000
+skinparam ArrowThickness 2
+skinparam ArrowFontName sans-serif
+skinparam ArrowFontColor #000000
+skinparam ArrowFontSize 12
+skinparam linetype ortho
+skinparam nodesep 55
+skinparam ranksep 65
+
+skinparam rectangle {
+  BackgroundColor #EEF6FF
+  BorderColor #245B8A
+  BorderThickness 2
+  FontColor #000000
+  FontSize 14
+}
+skinparam rectangle<<component>> {
+  BackgroundColor #EEF6FF
+  BorderColor #245B8A
+}
+skinparam rectangle<<bridge>> {
+  BackgroundColor #F5F0FF
+  BorderColor #65449B
+}
+skinparam rectangle<<support>> {
+  BackgroundColor #F3FAEF
+  BorderColor #3F7741
+}
+skinparam rectangle<<result>> {
+  BackgroundColor #FFF7E8
+  BorderColor #9A651E
+}
+skinparam rectangle<<weight>> {
+  BackgroundColor #DBEAFE
+  BorderColor #245B8A
+}
+skinparam rectangle<<bias>> {
+  BackgroundColor #FEF3C7
+  BorderColor #9A651E
+}
+
+skinparam class {
+  BackgroundColor #EEF6FF
+  BorderColor #245B8A
+  BorderThickness 2
+  FontColor #000000
+  FontSize 13
+  AttributeFontSize 13
+}
+skinparam class<<abstract_family>> {
+  BackgroundColor #F5F0FF
+  BorderColor #65449B
+}
+skinparam class<<derived_family>> {
+  BackgroundColor #F3FAEF
+  BorderColor #3F7741
+}
+skinparam class<<owner>> {
+  BackgroundColor #F3FAEF
+  BorderColor #3F7741
+}
+skinparam package {
+  BackgroundColor transparent
+  BorderColor #94A3B8
+  FontColor #000000
+  FontSize 18
+}
+skinparam package<<label_group>> {
+  BackgroundColor transparent
+  BorderColor transparent
+}
+skinparam packageStyle rectangle
+skinparam PackageTitleAlignment left
+skinparam legend {
+  BackgroundColor transparent
+  BorderColor transparent
+  FontColor #000000
+  FontSize 11
+}
+hide stereotype
+hide empty members
+hide circle
+
+skinparam sequence {
+  ParticipantBackgroundColor #EEF6FF
+  ParticipantBorderColor #245B8A
+  ParticipantBorderThickness 2
+  ParticipantFontColor #000000
+  ParticipantFontSize 14
+  LifeLineBorderColor #64748B
+  LifeLineBackgroundColor transparent
+  ArrowColor #000000
+  ArrowThickness 2
+  ArrowFontColor #000000
+  ArrowFontSize 13
+  GroupBorderColor #64748B
+  GroupBackgroundColor transparent
+  GroupHeaderFontColor #000000
+  GroupFontColor #000000
+  GroupFontSize 13
+  BoxBackgroundColor transparent
+  BoxBorderColor #64748B
+}
+hide footbox
+
+skinparam state {
+  BackgroundColor #EEF6FF
+  BorderColor #245B8A
+  BorderThickness 2
+  FontColor #000000
+  FontSize 13
+  ArrowColor #000000
+  ArrowFontColor #000000
+  ArrowFontSize 11
+}
+skinparam state<<lifecycle>> {
+  BackgroundColor #F5F0FF
+  BorderColor #65449B
+}
+skinparam state<<decision>> {
+  BackgroundColor #FFF7E8
+  BorderColor #9A651E
+}

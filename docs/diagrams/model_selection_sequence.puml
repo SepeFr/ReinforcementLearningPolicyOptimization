@@ -1,0 +1,56 @@
+@startuml
+!include _common.iuml
+skinparam NoteBackgroundColor #FFFFFF
+skinparam NoteBorderColor #FFFFFF
+title ModelSelection::select sequence
+
+participant caller
+participant ModelSelection
+participant selector
+participant validator
+participant "validation protocol" as validation_protocol
+participant scoring
+participant state
+participant stopping
+
+caller -> ModelSelection : <back:#FFFFFF>select()</back>
+
+loop while selector.hasNext(): request is limited by remaining attempt budget
+  ModelSelection -> selector : <back:#FFFFFF>ask(maximum_batch_size)</back>
+  selector -[#80551D,dashed]-> ModelSelection : <back:#FFFFFF>non-empty configuration batch</back>
+
+  loop each configuration; attempted count increments before validation
+    ModelSelection -> validator : <back:#FFFFFF>ModelConfigurationValidator::validate</back>
+    ModelSelection -> validation_protocol : <back:#FFFFFF>evaluate_configuration(configuration)</back>
+    note over validation_protocol
+    holdout: train → validate
+    K-fold: repeat fresh train → validate
+    end note
+    validation_protocol -[#80551D,dashed]-> ModelSelection : <back:#FFFFFF>ConfigurationEvaluation {mean, variance, metrics}</back>
+    ModelSelection -> scoring : <back:#FFFFFF>score(configuration, evaluation, natural direction)</back>
+    scoring -[#80551D,dashed]-> ModelSelection : <back:#FFFFFF>finite lower-is-better selection score</back>
+
+    alt success: state.update(configuration, evaluation) → successful feedback
+    else InvalidConfigurationError / ConfigurationEvaluationError: append failure record → failed feedback
+    end
+
+    ModelSelection -> stopping : <back:#FFFFFF>stoppingReason(current feedback), preserving first reason in batch</back>
+  end
+
+  ModelSelection -> selector : <back:#FFFFFF>tell(complete ordered feedback batch)</back>
+end
+
+alt no successful state → throw
+else use best configuration
+end
+
+ModelSelection -> validation_protocol : <back:#FFFFFF>train_final_model(best configuration; training + validation scenarios)</back>
+validation_protocol -[#80551D,dashed]-> ModelSelection : <back:#FFFFFF>OptimizerResult</back>
+ModelSelection -> validation_protocol : <back:#FFFFFF>evaluate_final_model(best configuration, training result)</back>
+ModelSelection -[#80551D,dashed]-> caller : <back:#FFFFFF>ModelSelectionResult</back>
+
+legend bottom center
+Feedback is atomic by issued batch. Final training and testing begin only after a successful incumbent exists.
+endlegend
+@enduml
+

@@ -1,0 +1,30 @@
+@startuml
+!include _common.iuml
+title EpisodeRunner::run sequence
+
+participant caller
+participant EpisodeRunner
+participant environment
+participant policy
+
+caller -> EpisodeRunner : <back:#FFFFFF>run(environment, policy, scenario)</back>
+EpisodeRunner -> environment : <back:#FFFFFF>reset(scenario)</back>
+environment -[#80551D,dashed]-> EpisodeRunner : <back:#FFFFFF>initial observation</back>
+
+loop until StepResult::hasFinished()
+  EpisodeRunner -> policy : <back:#FFFFFF>act(observation)</back>
+  policy -[#80551D,dashed]-> EpisodeRunner : <back:#FFFFFF>action</back>
+  EpisodeRunner -> environment : <back:#FFFFFF>step(action)</back>
+  environment -[#80551D,dashed]-> EpisodeRunner : <back:#FFFFFF>StepResult {observation, reward, flags, reason}</back>
+  EpisodeRunner -> EpisodeRunner : <back:#FFFFFF>total_reward += reward</back>\n<back:#FFFFFF>steps += 1</back>
+  alt #FFF7E8 finished: copy terminated, truncated, termination_reason; break
+  else continue: retain next observation for the next loop iteration
+  end
+end
+
+EpisodeRunner -[#80551D,dashed]-> caller : <back:#FFFFFF>EpisodeResult {total_reward, steps, final status}</back>
+
+legend bottom center
+Solid arrows are calls. Dashed arrows are returned values.
+endlegend
+@enduml

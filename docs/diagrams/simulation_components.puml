@@ -1,0 +1,31 @@
+@startuml
+!include _common.iuml
+skinparam nodesep 85
+title Simulation and policy-optimization components
+
+rectangle "<b>PolicyOptimizationProblem</b>\nowns policy · borrows environment\nloops scenarios × replicas" as PROBLEM <<bridge>>
+rectangle "<b>Environment</b>\nreset(scenario) → observation\nstep(action) → StepResult" as ENV <<component>>
+rectangle "<b>EpisodeRunner</b>\nreset → act → step → accumulate\nstops on StepResult::hasFinished()" as RUNNER <<component>>
+rectangle "<b>Policy</b>\nact(observation) → action\ntyped interface" as POLICY <<component>>
+rectangle "<b>StepResult / EpisodeResult</b>\nreward · steps · flags · reason" as EPISODE_RESULT <<result>>
+rectangle "<b>ObjectiveEvaluation</b>\nordered samples + ExecutionMetrics" as OBJECTIVE <<result>>
+rectangle "<b>FeedForwardPolicy</b>" as FF_POLICY <<component>>
+
+ENV -[hidden]right-> RUNNER
+RUNNER -[hidden]right-> POLICY
+EPISODE_RESULT -[hidden]right-> OBJECTIVE
+OBJECTIVE -[hidden]right-> FF_POLICY
+PROBLEM -[hidden]down-> RUNNER
+
+PROBLEM -down-> RUNNER : <back:#FFFFFF>run(environment, policy, scenario)</back>
+RUNNER -left-> ENV : <back:#FFFFFF>reset / step</back>
+RUNNER -right-> POLICY : <back:#FFFFFF>act</back>
+ENV -down-> EPISODE_RESULT : <back:#FFFFFF>transition / aggregate</back>
+FF_POLICY -up-|> POLICY : <back:#FFFFFF>implements</back>
+RUNNER -down-> OBJECTIVE : <back:#FFFFFF>episode result</back>
+PROBLEM -down-> POLICY : <back:#FFFFFF>setParameters()</back>
+
+legend bottom center
+<color:#000000>━━▶</color> call or data dependency     <color:#000000>┄┄▷</color> interface implementation
+endlegend
+@enduml

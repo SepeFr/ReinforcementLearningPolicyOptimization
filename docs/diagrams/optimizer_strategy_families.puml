@@ -1,0 +1,93 @@
+@startuml
+!include _common.iuml
+top to bottom direction
+skinparam nodesep 30
+skinparam ranksep 65
+title Optimizer strategy families
+
+package "" as STRATEGY_GRID <<label_group>> {
+  package "" as COLUMN_LEFT <<label_group>> {
+    package "Initialization" as PKG_INIT {
+      abstract class "<b>InitialParametersStrategy</b>\ngenerate() · reset()" as InitialParametersStrategy <<abstract_family>>
+      class "<b>RandomInitialization</b>" as RandomInitialization
+      class "<b>ProvidedInitialization</b>" as ProvidedInitialization
+      class "<b>ProvidedInitializationVector</b>" as ProvidedInitializationVector
+      class "<b>FeedForwardInitialization</b>" as FeedForwardInitialization
+
+      RandomInitialization -up-|> InitialParametersStrategy
+      ProvidedInitialization -up-|> InitialParametersStrategy
+      ProvidedInitializationVector -up-|> InitialParametersStrategy
+      FeedForwardInitialization -up-|> RandomInitialization
+      RandomInitialization -[hidden]right-> ProvidedInitialization
+      ProvidedInitialization -[hidden]right-> ProvidedInitializationVector
+    }
+
+    package "Simulated-annealing cooling" as PKG_COOLING {
+      abstract class "<b>CoolingFunction</b>\ntemperature(time)" as CoolingFunction <<abstract_family>>
+      class Geometric
+      class Linear
+      class Logarithmic
+      class Reciprocal
+      class Exponential
+      class InverseLogarithmic
+
+      Geometric -up-|> CoolingFunction
+      Linear -up-|> CoolingFunction
+      Logarithmic -up-|> CoolingFunction
+      Reciprocal -up-|> CoolingFunction
+      Exponential -up-|> CoolingFunction
+      InverseLogarithmic -up-|> CoolingFunction
+      Geometric -[hidden]right-> Linear
+      Linear -[hidden]right-> Logarithmic
+      Logarithmic -[hidden]right-> Reciprocal
+      Exponential -[hidden]right-> InverseLogarithmic
+    }
+
+    FeedForwardInitialization -[hidden]down-> CoolingFunction
+  }
+
+  package "" as COLUMN_RIGHT <<label_group>> {
+    package "Neighborhoods" as PKG_NEIGHBORHOODS {
+      abstract class "<b>NeighborhoodStrategy</b>\ngenerate(batch, dimension) · reset()" as NeighborhoodStrategy <<abstract_family>>
+      class "<b>GaussianNeighborhood</b>" as GaussianNeighborhood
+      class "<b>UniformNeighborhood</b>" as UniformNeighborhood
+      class "<b>CoordinateNeighborhood</b>" as CoordinateNeighborhood
+      class "<b>LatinHypercubeUniformNeighborhood</b>" as LatinHypercubeUniformNeighborhood
+      class "<b>LatinHypercubeGaussianNeighborhood</b>" as LatinHypercubeGaussianNeighborhood
+
+      GaussianNeighborhood -up-|> NeighborhoodStrategy
+      UniformNeighborhood -up-|> NeighborhoodStrategy
+      CoordinateNeighborhood -up-|> NeighborhoodStrategy
+      LatinHypercubeUniformNeighborhood -up-|> NeighborhoodStrategy
+      LatinHypercubeGaussianNeighborhood -up-|> NeighborhoodStrategy
+      GaussianNeighborhood -[hidden]right-> UniformNeighborhood
+      UniformNeighborhood -[hidden]right-> CoordinateNeighborhood
+      LatinHypercubeUniformNeighborhood -[hidden]right-> LatinHypercubeGaussianNeighborhood
+    }
+
+    package "External stopping" as PKG_STOPPING {
+      abstract class "<b>OptimizationStoppingStrategy</b>\nshouldStop(batch, incumbent, iteration)" as OptimizationStoppingStrategy <<abstract_family>>
+      class "<b>MaximumIterations</b>" as MaximumIterations
+      class "<b>MaximumEvaluations</b>" as MaximumEvaluations
+      class "<b>NoImprovement</b>" as NoImprovement
+      class "<b>TargetValue</b>" as TargetValue
+
+      MaximumIterations -up-|> OptimizationStoppingStrategy
+      MaximumEvaluations -up-|> OptimizationStoppingStrategy
+      NoImprovement -up-|> OptimizationStoppingStrategy
+      TargetValue -up-|> OptimizationStoppingStrategy
+      MaximumIterations -[hidden]right-> MaximumEvaluations
+      MaximumEvaluations -[hidden]right-> NoImprovement
+      NoImprovement -[hidden]right-> TargetValue
+    }
+
+    LatinHypercubeGaussianNeighborhood -[hidden]down-> OptimizationStoppingStrategy
+  }
+
+  COLUMN_LEFT -[hidden]right-> COLUMN_RIGHT
+}
+
+legend bottom center
+Open triangle points to the abstract strategy interface.
+endlegend
+@enduml

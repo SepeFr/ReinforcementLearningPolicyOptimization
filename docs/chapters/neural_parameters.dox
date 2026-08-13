@@ -1,0 +1,95 @@
+/**
+ * @page neural_parameter_mapping_chapter Neural policies and parameter mapping
+ *
+ * @ref FeedForwardNetworkConfiguration defines the layer widths, activations,
+ * and shared bias setting. @ref FeedForwardNetwork turns that value into an
+ * owned sequence of @ref DenseLayer objects. @ref FeedForwardPolicy adapts the
+ * resulting vector transformation to the typed @ref Policy interface.
+ *
+ * @image html neural_parameter_flow.svg "Feed-forward data flow and canonical parameter slices."
+ *
+ * @section neural_construction Network construction
+ *
+ * Let \f$n_0\f$ be `input_size`, let the configured hidden widths be
+ * \f$n_1,\ldots,n_{L-1}\f$, and let \f$n_L\f$ be `output_size`. Hidden layers
+ * are created in vector order and share `hidden_activation`; the final layer
+ * uses `output_activation`. A network with no hidden widths contains one dense
+ * layer from input directly to output.
+ *
+ * Layer \f$\ell\f$ stores
+ * \f$W^{(\ell)}\in\mathbb{R}^{n_\ell\times n_{\ell-1}}\f$ and, when
+ * `use_bias` is true, \f$b^{(\ell)}\in\mathbb{R}^{n_\ell}\f$. Propagation is
+ *
+ * \f[
+ * h^{(0)}=x_t,\qquad
+ * h^{(\ell)}=\phi_\ell\!\left(W^{(\ell)}h^{(\ell-1)}+b^{(\ell)}\right),
+ * \quad \ell=1,\ldots,L.
+ * \f]
+ *
+ * @ref ActivationFunction applies the selected @ref ActivationType element by
+ * element. @ref DenseLayer checks its input dimension before the matrix product.
+ * @ref FeedForwardPolicy additionally rejects a non-finite final output before
+ * constructing an action.
+ *
+ * @section neural_layout Canonical parameter layout
+ *
+ * @ref FeedForwardNetworkConfiguration::parameterCountFromConfiguration uses
+ * checked arithmetic for
+ *
+ * \f[
+ * d=\sum_{\ell=1}^{L}\left(n_\ell n_{\ell-1}+\beta n_\ell\right),
+ * \qquad \beta=\mathbf{1}_{use\_bias}\in\{0,1\}.
+ * \f]
+ *
+ * One canonical vector concatenates layers in propagation order. Each layer
+ * contributes all entries of \f$W^{(\ell)}\f$ in Eigen column-major order
+ * followed by \f$b^{(\ell)}\f$ when enabled. For a matrix position
+ * \f$(i,j)\f$, the layer-local weight offset is \f$j n_\ell+i\f$.
+ * @ref ParameterLayout stores the network-wide
+ * `weights_offset`, `weights_count`, `biases_offset`, and `biases_count` for
+ * each layer.
+ *
+ * `FeedForwardNetwork::setParameters()` partitions the candidate vector by
+ * complete layer slices and @ref DenseLayer maps each weight slice directly to
+ * its matrix dimensions. `parameters()` reconstructs the same interleaved
+ * layer layout. `weightsParameters()` concatenates only layer weights;
+ * `biasesParameters()` concatenates only layer biases. Policy regularization
+ * consumes the weight-only vector, so biases never enter its L1 or squared-L2
+ * penalty.
+ *
+ * @section neural_policy_adapter Policy inference
+ *
+ * 1. `Observation::observationToVector()` returns components in configured
+ *    input order.
+ * 2. @ref FeedForwardNetwork::forward propagates the vector through every layer.
+ * 3. A default-constructed action receives the output through
+ *    `Action::vectorToAction()`.
+ * 4. The populated action is returned by value to @ref EpisodeRunner.
+ *
+ * Template checks require observation and action types derived from
+ * @ref ObservationBase and @ref ActionBase, and require a default-constructible
+ * action. @ref PolicyFactory validates configuration values and returns unique
+ * ownership of either a typed policy or a raw network.
+ *
+ * @section neural_serialization Serialization
+ *
+ * @ref PolicySerialization writes version 1 as ordered comma-separated rows:
+ * format version, policy type, input width, hidden widths, output width,
+ * activations, bias flag, regularization settings, and canonical parameters.
+ * Double values use `max_digits10`. Deserialization requires the same row order,
+ * rejects unsupported or trailing data, validates finite numeric values, and
+ * reconstructs the policy to verify the parameter count. The returned
+ * configuration and parameter vector own all parsed data.
+ *
+ * @section neural_cost Neural computation metric
+ *
+ * @ref FeedForwardNetworkComputationCost counts
+ * \f$\sum_{\ell=1}^{L}n_{\ell-1}n_\ell\f$ multiply-accumulate operations per inference. Bias
+ * additions and activation operations fall outside this MAC metric.
+ * @ref PolicyOptimizationProblem multiplies it by the episode step count because
+ * it performs one policy inference before every simulator step.
+ *
+ * @see @ref simulation_execution_chapter "Simulation and policy execution"
+ * @see @ref optimization_lifecycle_chapter "Optimization lifecycle"
+ * @see @ref technical_chapters "Technical Chapters"
+ */

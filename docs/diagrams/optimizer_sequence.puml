@@ -1,0 +1,48 @@
+@startuml
+!include _common.iuml
+skinparam NoteBackgroundColor #FFFFFF
+skinparam NoteBorderColor #FFFFFF
+title Optimizer::optimize ask–evaluate–tell lifecycle
+
+participant caller
+participant Optimizer
+participant initialization
+participant OptimizerMethod
+participant problem
+participant stopping
+
+caller -> Optimizer : <back:#FFFFFF>optimize()</back>
+Optimizer -> initialization : <back:#FFFFFF>reset()</back>
+Optimizer -> OptimizerMethod : <back:#FFFFFF>reset()</back>
+
+loop one non-empty method batch
+  Optimizer -> OptimizerMethod : <back:#FFFFFF>ask()</back>
+  OptimizerMethod -[#80551D,dashed]-> Optimizer : <back:#FFFFFF>ordered candidate vectors</back>
+  Optimizer -> stopping : <back:#FFFFFF>allowedEvaluationCount(requested size)</back>
+  stopping -[#80551D,dashed]-> Optimizer : <back:#FFFFFF>allowed size</back>
+
+  loop each allowed candidate, in ask order
+    alt wrong dimension → throw
+    else non-finite or out of bounds → failed feedback, no objective call
+    else feasible
+      Optimizer -> problem : <back:#FFFFFF>evaluate</back>
+      problem -[#80551D,dashed]-> Optimizer : <back:#FFFFFF>ObjectiveEvaluation + metrics</back>
+    end
+  end
+
+  alt complete: negate samples for maximize → method.tell(ordered feedback) → copy method incumbent
+  else partial evaluation-budget batch: preserve feedback for stopping; skip tell()
+  end
+
+  Optimizer -> stopping : <back:#FFFFFF>stoppingReason(batch, incumbent, logical iteration count)</back>
+end
+
+Optimizer -[#80551D,dashed]-> caller : <back:#FFFFFF>OptimizerResult</back>
+note over Optimizer #FFFFFF
+restore natural sign for maximization incumbent and history
+end note
+
+legend bottom center
+Solid arrows are calls. Dashed arrows are returned values.
+endlegend
+@enduml

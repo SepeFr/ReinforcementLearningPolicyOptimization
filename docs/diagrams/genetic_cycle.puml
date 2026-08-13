@@ -1,0 +1,56 @@
+@startuml
+!include _common.iuml
+skinparam NoteBackgroundColor #FFFFFF
+skinparam NoteBorderColor #94A3B8
+title GeneticConfigurationSelector generation lifecycle
+
+actor caller
+participant GeneticConfigurationSelector as SELECTOR
+participant GeneticAlgorithmEngine as ENGINE
+participant ModelSelection as MODEL
+
+caller -> SELECTOR : ask(maximum batch size)
+
+group initialize generation
+  SELECTOR -> ENGINE : create initial population
+  note over SELECTOR, ENGINE
+    <b>Initial population</b>
+    tuple genomes
+    sample every axis domain
+  end note
+end
+
+loop each bounded slice [one pending slice at a time]
+  SELECTOR -> ENGINE : request next population slice
+  ENGINE -[#80551D,dashed]-> SELECTOR : ordered genomes
+  SELECTOR -[#80551D,dashed]-> caller : configurations
+  caller -> MODEL : validate · train · score
+  MODEL -[#80551D,dashed]-> caller : ordered feedback slice
+  caller -> SELECTOR : tell(ordered feedback slice)
+  SELECTOR -> SELECTOR : append feedback across slices
+end
+
+alt all generation evaluations failed
+  SELECTOR -[#9A651E,dashed]-> caller : selector exhausted
+else at least one finite selection_score
+  note over SELECTOR, ENGINE
+    <b>score → fitness</b>
+    <latex>f_i = s_{\mathrm{worst}} - s_i + \varepsilon</latex>
+    positive for every success
+    failure has zero fitness and is ineligible
+  end note
+  SELECTOR -> ENGINE : assign fitness and build next population
+  ENGINE -> ENGINE : copy descending-fitness elites
+  ENGINE -> ENGINE : tournament with replacement
+  ENGINE -> ENGINE : weighted or uniform selection
+  ENGINE -> ENGINE : uniform per-gene crossover
+  ENGINE -> ENGINE : random-reset per-axis mutation
+  ENGINE -> ENGINE : elites followed by children
+  ENGINE -> ENGINE : clear fitness; generation + 1
+  ENGINE -[#80551D,dashed]-> SELECTOR : next population ready
+end
+
+legend bottom center
+Solid arrows are calls or successful transitions. Dashed arrows are returned data or the all-failed terminal result.
+endlegend
+@enduml

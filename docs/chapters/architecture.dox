@@ -1,0 +1,77 @@
+/**
+ * @page library_architecture_chapter Library architecture and data flow
+ *
+ * The library turns a model configuration into policy parameters, validation
+ * statistics, and a final test evaluation. Three entry points define the main
+ * execution scales:
+ *
+ * - @ref EpisodeRunner::run executes one scenario replica;
+ * - @ref Optimizer::optimize searches one fixed black-box problem;
+ * - @ref ModelSelection::select compares configurations, retrains the selected
+ *   configuration, and evaluates it on test scenarios.
+ *
+ * @image html architecture_components.svg "Library modules, runtime dependencies, and result flow."
+ *
+ * @section architecture_components Responsibilities
+ *
+ * | Module | Principal types | Runtime responsibility |
+ * |---|---|---|
+ * | Simulation | @ref Environment, @ref Policy, @ref EpisodeRunner | Exchange observations and actions and aggregate one episode. |
+ * | Neural policies | @ref FeedForwardNetwork, @ref FeedForwardPolicy, @ref ParameterLayout | Map a flat candidate vector to policy inference. |
+ * | Optimization | @ref BlackBoxProblem, @ref Optimizer, @ref OptimizerMethod | Run ordered ask--evaluate--tell iterations and track an incumbent. |
+ * | Policy objective | @ref PolicyOptimizationProblem | Expand one candidate into scenario-major, replica-minor episode samples. |
+ * | Model selection | @ref ConfigurationSelector, @ref ValidationProtocol, @ref ModelSelection | Generate configurations, train, validate, score, and select. |
+ * | Genetic search | @ref GeneticConfigurationSelector, @ref GeneticAlgorithmEngine | Evolve tuple genomes assembled from configuration axes. |
+ * | Cost and validation | @ref ExecutionMetrics, @ref ConfigurationScoringCriterion, @ref ModelConfigurationValidator | Count work, normalize score penalties, and reject invalid configurations. |
+ *
+ * @section architecture_end_to_end End-to-end sequence
+ *
+ * 1. A caller constructs a stable @ref ModelConfiguration. A
+ *    @ref ConfigurationSearchSpace binds selected fields through non-owning
+ *    @ref ConfigurationAxis objects.
+ * 2. A @ref ConfigurationSelector returns configuration copies. @ref ModelSelection
+ *    validates each copy before invoking `ModelSelectionFunctions::evaluate_configuration`.
+ * 3. A validation protocol creates a @ref PolicyOptimizationProblem for each
+ *    training run. @ref OptimizerFactory validates the optimizer configuration
+ *    for the network parameter count and assembles owned strategies and method state.
+ * 4. @ref Optimizer requests candidates from @ref OptimizerMethod, evaluates
+ *    them through @ref BlackBoxProblem, and returns ordered feedback. Public
+ *    objective samples retain their natural direction; method feedback always
+ *    uses minimization values.
+ * 5. @ref PolicyOptimizationProblem applies a candidate to its owned policy and
+ *    executes scenarios and replicas through @ref EpisodeRunner. Episode return,
+ *    failure status, and @ref ExecutionMetrics become an @ref ObjectiveEvaluation.
+ * 6. The validation protocol evaluates the trained incumbent without policy
+ *    regularization. @ref ConfigurationScoringCriterion converts its natural-
+ *    direction mean and measured cost to a lower-is-better selection score.
+ * 7. The selector receives a complete ordered feedback batch. Selection ends
+ *    on selector exhaustion or a configured stopping criterion. The best
+ *    configuration is trained on the combined training and validation sets,
+ *    then evaluated on the test set.
+ *
+ * @section architecture_ownership Ownership and lifetime
+ *
+ * @ref Optimizer owns its problem, method, and initialization strategy. Some
+ * methods retain a non-owning pointer to that strategy; declaration order keeps
+ * the strategy alive until after method destruction. @ref PolicyOptimizationProblem
+ * owns its policy objects and scenario vector while borrowing an environment.
+ * Validation configurations also borrow their environment through
+ * `std::reference_wrapper`.
+ *
+ * @ref ModelSelection owns its selector and callback objects. Integrated
+ * selectors point to fields of a caller-owned @ref ModelConfiguration. That
+ * configuration remains alive and unmoved while the selector exists. Returned
+ * configurations, evaluations, and result histories are value copies.
+ *
+ * @section architecture_failures Failure boundaries
+ *
+ * Optimizer candidate failures are represented by @ref CandidateEvaluation and
+ * still consume the evaluation budget. Model-selection failures are represented
+ * by @ref ModelSelectionFailureRecord and still consume the configuration
+ * budget. @ref InvalidConfigurationError and @ref ConfigurationEvaluationError
+ * are converted to failed selector feedback during selection. Exceptions outside
+ * those categories propagate to the caller. Checked execution counters throw
+ * `std::overflow_error` before committing their own counter updates.
+ *
+ * @see @ref technical_chapters "Technical Chapters"
+ */

@@ -1,0 +1,145 @@
+/**
+ * @page model_selection_chapter Model selection and validation
+ *
+ * @ref ModelSelection separates configuration generation from configuration
+ * evaluation. A @ref ConfigurationSelector implements an ask--tell stream;
+ * @ref ModelSelectionFunctions supplies validation, final retraining, and test
+ * callbacks. @ref ModelSelectionState retains only successfully scored records.
+ *
+ * @image html model_selection_components.svg "Model-selection components, ownership, and data products."
+ *
+ * @section selection_sequence Selection sequence
+ *
+ * @image html model_selection_sequence.svg "Configuration batch evaluation, feedback, and final model production."
+ *
+ * 1. The remaining `ModelSelectionBudgetCriterionConfiguration` allowance, when
+ *    present, limits the next `ConfigurationSelector::ask()` request. The
+ *    selector must return a non-empty batch.
+ * 2. Each returned configuration increments `attempted_configuration_count`.
+ *    @ref ModelConfigurationValidator checks policy, parameter layout, optimizer
+ *    dimension, and method-specific constraints before training starts.
+ * 3. `evaluate_configuration` trains and validates the configuration. The
+ *    returned mean must be finite and variance finite and non-negative.
+ * 4. @ref ConfigurationScoringCriterion combines natural-direction performance
+ *    and enabled cost terms into a finite lower-is-better score.
+ * 5. A success enters @ref ModelSelectionState and produces successful
+ *    @ref ConfigurationFeedback. A caught @ref InvalidConfigurationError or
+ *    @ref ConfigurationEvaluationError produces failed feedback and a
+ *    @ref ModelSelectionFailureRecord.
+ * 6. Stopping strategies inspect feedback until the first reason is found. The
+ *    remaining issued configurations are still evaluated. The entire ordered
+ *    feedback batch reaches `ConfigurationSelector::tell()` before selection stops.
+ * 7. If no criterion fires, the loop continues while `hasNext()` is true.
+ *    Exhaustion produces @ref OptimizationTerminationReason::ConfigurationSelectorExhausted.
+ * 8. The lowest-score successful configuration is passed to final training,
+ *    then final test evaluation. Selection, final-training, and test metrics are
+ *    combined in @ref ModelSelectionResult.
+ *
+ * Target and no-improvement conditions can therefore overshoot by the unprocessed
+ * portion of an already issued batch. A maximum-configuration budget limits
+ * batch cardinality before `ask()` and therefore stops at its exact bound.
+ *
+ * @section selection_space Search-space representation
+ *
+ * @ref ConfigurationSearchSpace is the Cartesian product of its axes. Each
+ * @ref ConfigurationAxis owns a domain and borrows one mutable field of a stable
+ * @ref ModelConfiguration. Axis tuple order defines genome order and grid
+ * nesting. Duplicate field addresses are rejected.
+ *
+ * - @ref DiscreteDomain stores a non-empty ordered value vector. Repeated values
+ *   occupy repeated positions.
+ * - @ref CategoricalDomain stores unique identifier/value pairs in order.
+ * - @ref ContinuousDomain stores finite inclusive bounds.
+ *
+ * The configuration owning bound fields must outlive the search space and
+ * selector and must remain at the same address. Every returned model
+ * configuration is a value copy taken after the selector assigns axis fields.
+ *
+ * @section selection_selectors Selector contracts
+ *
+ * @image html model_selection_strategies.svg "Configuration-selector and model-selection-stopping families."
+ *
+ * @ref GridConfigurationSelector enumerates a finite mixed-radix grid with the
+ * last axis changing fastest. Continuous cardinality is
+ * `ceil((upper-lower)/continuous_step_size)+1`; clamping the final point includes
+ * the upper bound even when the interval length is not an exact multiple.
+ * Grid enumeration proceeds independently of feedback, and grid exhaustion
+ * supplies its limit.
+ *
+ * @ref RandomConfigurationSelector independently resamples every axis for every
+ * output. @ref RandomWalkConfigurationSelector uniformly selects one axis per
+ * output and resamples only that field, so elements within one batch are
+ * sequential walk states. Both streams are unbounded and require an explicit
+ * model-selection budget.
+ *
+ * @ref GeneticConfigurationSelector emits one engine generation through one or
+ * more batches and advances only after complete generation feedback. Its state
+ * and operators are described in @ref genetic_search_chapter.
+ *
+ * @section selection_validation Holdout validation
+ *
+ * @ref ValidationProtocol owns temporary training problems and optimizers while
+ * borrowing the configured environment. Training evaluates every candidate on
+ * `training_scenarios` in stored order with `training_runs_per_scenario`
+ * replicas. The trained incumbent is then evaluated on `validation_scenarios`
+ * with `validation_runs_per_scenario` replicas and policy regularization
+ * excluded.
+ *
+ * The resulting @ref ConfigurationEvaluation contains the natural-direction
+ * mean, population variance, and the sum of training and validation metrics.
+ * Validation requires at least one finite objective sample. Its selection score
+ * remains empty until @ref ModelSelection applies scoring.
+ *
+ * @section selection_kfold K-fold validation
+ *
+ * @ref KFoldCrossValidationProtocol concatenates configured training scenarios
+ * followed by validation scenarios. A local `std::mt19937_64` seeded from
+ * `random_seed` reproducibly permutes their indices. With \f$q\f$ scenarios and
+ * \f$K\f$ folds, base size is \f$\lfloor q/K\rfloor\f$ and the first
+ * \f$q\bmod K\f$ folds receive one extra scenario.
+ *
+ * Every fold constructs a fresh training optimizer on the complement and uses
+ * its held-out fold for validation. If fold \f$k\f$ contributes \f$n_k\f$
+ * validation samples with mean \f$\widehat J_k(c)\f$ and population variance \f$v_k\f$,
+ * aggregation uses weighted first and second moments:
+ *
+ * \f[
+ * \overline J(c)=\frac{\sum_kn_k\widehat J_k(c)}{\sum_kn_k},\qquad
+ * v=\frac{\sum_kn_k\left(v_k+\widehat J_k(c)^2\right)}{\sum_kn_k}-\overline J(c)^2.
+ * \f]
+ *
+ * A computed negative variance is clamped to zero after finiteness checks.
+ * Metrics include training and validation work from every fold.
+ *
+ * @section selection_stopping Stopping state
+ *
+ * @ref ModelSelectionStoppingCriterion owns at most one strategy of each type
+ * and checks them in caller order. @ref ModelSelectionBudgetCriterion counts
+ * all attempted configurations, including failures. @ref ModelSelectionNoImprovementCriterion
+ * processes successful feedback only and resets its counter when
+ * `best_score-current_score > threshold`. @ref ModelSelectionTargetScoreCriterion
+ * stops on a successful `score <= target_score`.
+ *
+ * Unbounded selectors require a budget strategy at construction. Grid selection
+ * may run with an empty stopping vector and terminate by exhaustion.
+ *
+ * @section selection_final Final training and test
+ *
+ * @ref makeModelSelectionFunctions captures validation settings and test
+ * scenarios by value while retaining the borrowed environment reference. Its
+ * final-training callback concatenates training scenarios followed by validation
+ * scenarios and uses `training_runs_per_scenario`. Its final-test callback uses
+ * `validation_runs_per_scenario`, excludes policy regularization through the
+ * protocol's evaluation operation, and returns objective samples in their
+ * natural direction. The helper configures that direction as maximization.
+ *
+ * Failed attempts populate failure records. Successful attempts populate
+ * `evaluated_configurations` and `selection_execution_metrics`. A partial
+ * evaluation is retained in a failure record only when the callback returned it
+ * before statistics or scoring were rejected. Selection finishing with zero
+ * successful records throws `std::runtime_error`; final callback exceptions propagate.
+ *
+ * @see @ref genetic_search_chapter "Genetic configuration search"
+ * @see @ref cost_validation_chapter "Computational cost and configuration validation"
+ * @see @ref technical_chapters "Technical Chapters"
+ */

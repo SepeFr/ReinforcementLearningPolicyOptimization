@@ -1,0 +1,44 @@
+@startuml
+!include _common.iuml
+skinparam nodesep 115
+title Optimization subsystem: ownership and feedback
+
+rectangle "<b>Optimizer</b>\ncandidate validation · direction conversion\nbatch / iteration / evaluation counters\nincumbent history · termination reason" as OPT <<component>>
+
+rectangle "<b>BlackBoxProblem</b>\ndimension · direction · optional bounds\nevaluate(parameters)\n→ ObjectiveEvaluation" as PROBLEM <<component>>
+rectangle "<b>OptimizerMethod</b>\nask() → ordered candidates\ntell(ordered CandidateEvaluation)\nminimization state + incumbent" as METHOD <<component>>
+rectangle "<b>Initialization strategy</b>\ngenerate() · reset()\nowned by Optimizer\nborrowed by OptimizerMethod" as INIT <<bridge>>
+
+rectangle "<b>Stopping criteria</b>\nexternal ordered strategies\nmethod convergence status" as STOPPING <<bridge>>
+rectangle "<b>CandidateEvaluation</b>\nparameters · samples · status\nmethod-facing sign normalized" as EVALUATION <<result>>
+rectangle "<b>OptimizerResult</b>\nnatural-direction incumbent\nhistory · counters · metrics · reason" as RESULT <<result>>
+
+' Invisible anchors keep the final-result edge outside the initialization box.
+circle "<size:1> </size>" as RESULT_ROUTE_TOP #transparent;line:transparent
+circle "<size:1> </size>" as RESULT_ROUTE_BOTTOM #transparent;line:transparent
+
+PROBLEM -[hidden]right-> METHOD
+METHOD -[hidden]right-> INIT
+STOPPING -[hidden]right-> EVALUATION
+EVALUATION -[hidden]right-> RESULT
+OPT -[hidden]down-> METHOD
+INIT -[hidden]right-> RESULT_ROUTE_TOP
+RESULT -[hidden]right-> RESULT_ROUTE_BOTTOM
+RESULT_ROUTE_TOP -[hidden]down-> RESULT_ROUTE_BOTTOM
+
+OPT *-down- PROBLEM : <back:#FFFFFF>owns</back>
+OPT *-down- METHOD : <back:#FFFFFF>owns</back>
+OPT *-down- INIT : <back:#FFFFFF>owns</back>
+METHOD -left-> PROBLEM : <back:#FFFFFF>evaluate</back>
+PROBLEM .right[#80551D].> METHOD : <back:#FFFFFF>raw samples</back>
+INIT -left-> METHOD : <back:#FFFFFF>borrowed generate()</back>
+METHOD .down[#80551D].> EVALUATION : <back:#FFFFFF>ordered feedback</back>
+OPT -left-> STOPPING : <back:#FFFFFF>check after batch</back>
+OPT .right[#80551D]. RESULT_ROUTE_TOP : <back:#FFFFFF>finalize</back>
+RESULT_ROUTE_TOP .down[#80551D]. RESULT_ROUTE_BOTTOM
+RESULT_ROUTE_BOTTOM .left[#80551D].> RESULT
+
+legend bottom center
+<color:#000000>◆━━</color> ownership     <color:#000000>━━▶</color> call / dependency     <color:#000000>┄┄▶</color> ordered data / result
+endlegend
+@enduml

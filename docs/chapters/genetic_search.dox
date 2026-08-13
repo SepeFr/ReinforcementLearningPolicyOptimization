@@ -1,0 +1,93 @@
+/**
+ * @page genetic_search_chapter Genetic configuration search
+ *
+ * @ref GeneticConfigurationSelector represents one model configuration as a
+ * tuple genome. Tuple position \f$j\f$ has the value type and domain of search-
+ * space axis \f$j\f$. Applying a genome writes every tuple value to its bound
+ * field, then copies the complete @ref ModelConfiguration.
+ *
+ * @image html genetic_cycle.svg "Generation batching, score-to-fitness mapping, and population evolution."
+ *
+ * @section genetic_initialization Initial population
+ *
+ * Construction samples exactly `GeneticAlgorithmConfiguration::population_size`
+ * genomes. Discrete and categorical genes use a uniform stored index;
+ * continuous genes use `std::uniform_real_distribution` over their bounds.
+ * The initialization generator and @ref GeneticAlgorithmEngine generator are
+ * both seeded from `GeneticAlgorithmConfiguration::random_seed` and then evolve
+ * independently.
+ *
+ * @ref GeneticConfigurationOperatorFactory creates type-erased crossover and
+ * mutation callables whose tuple positions match axis order. The returned
+ * callables own copies of their probabilities and domain tuple. The selector
+ * owns the search space, configuration settings, initial generator, engine, and
+ * all in-progress generation buffers. It borrows the configuration fields bound
+ * by its axes.
+ *
+ * @section genetic_protocol Generation ask--tell protocol
+ *
+ * 1. At the start of a generation, `GeneticAlgorithmEngine::askGeneration()`
+ *    returns every genome in population order and marks engine fitness pending.
+ * 2. The selector returns the next
+ *    `min(maximum_batch_size, remaining_genomes)` configurations. It records that
+ *    exact slice cardinality and rejects another ask until matching feedback arrives.
+ * 3. `tell()` appends feedback in slice order. The engine advances after every
+ *    genome in the generation has received feedback.
+ * 4. After the complete generation, successful entries must contain finite
+ *    lower-is-better selection scores. Let \f$S_{worst}\f$ be the largest such
+ *    score. Selector fitness is
+ *    \f[
+ *    F_i=S_{worst}-S_i+\varepsilon
+ *    \f]
+ *    for success, where `fitness_epsilon` is finite and positive. Failed entries
+ *    receive failed status and zero fitness.
+ * 5. A generation with zero successful entries marks the selector exhausted.
+ *    A successful generation reaches `tellGeneration()`, which evolves the
+ *    population before the next selector ask.
+ *
+ * This protocol keeps fitness association stable even when model selection uses
+ * batches smaller than the population. A model-selection budget can end after a
+ * generation slice only when its remaining allowance truncates the request; the
+ * returned slice still receives complete feedback.
+ *
+ * @section genetic_selection Parent selection and elitism
+ *
+ * @ref GeneticAlgorithmEngine normalizes successful negative input fitness to
+ * zero and excludes failed individuals. It sorts successful indices by
+ * descending fitness and copies
+ * `min(elite_count, successful_count)` genomes unchanged. Copied elites enter
+ * the next population with empty fitness.
+ *
+ * Each parent selection builds a tournament of `tournament_size` draws with
+ * replacement from successful indices. If tournament fitness sums to a positive
+ * value, `std::discrete_distribution` selects proportionally to those weights.
+ * If every tournament weight is zero, selection is uniform among sampled
+ * participants. Two independent selections supply each child's parents.
+ *
+ * @section genetic_operators Crossover and mutation
+ *
+ * @ref UniformCrossoverConfiguration selects each child gene independently from
+ * the first parent with `first_parent_gene_probability`; otherwise it copies the
+ * second-parent gene. @ref RandomResetMutationConfiguration then considers each
+ * axis independently. With probability `per_axis_probability`, the current gene
+ * is replaced by a fresh full-domain sample. Replacement may equal the previous
+ * value.
+ *
+ * Children fill all population positions after elites. The engine replaces the
+ * complete population, increments `generation()`, clears its pending flag, and
+ * waits for the next full-generation ask.
+ *
+ * @section genetic_errors State and error conditions
+ *
+ * Population size must be at least two. Elite count is strictly below population
+ * size, and tournament size lies in `[1,population_size]`. Operator probabilities
+ * lie in `[0,1]`. `askGeneration()` while fitness is pending and
+ * `tellGeneration()` without a pending generation throw `std::logic_error`.
+ * Cardinality mismatch or non-finite successful fitness throws
+ * `std::invalid_argument`. The standalone engine rejects a generation containing
+ * no successful evaluation with `std::runtime_error`; the configuration selector
+ * converts that condition to exhaustion before calling the engine.
+ *
+ * @see @ref model_selection_chapter "Model selection and validation"
+ * @see @ref technical_chapters "Technical Chapters"
+ */
