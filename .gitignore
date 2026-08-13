@@ -1,0 +1,9 @@
+/Development/
+/.*/
+!/.github/
+!/.dockerignore
+/build/
+/main
+/compile_commands.json
+__pycache__/
+*.py[cod]
