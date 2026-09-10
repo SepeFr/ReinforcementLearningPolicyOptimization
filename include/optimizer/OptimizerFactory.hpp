@@ -163,15 +163,16 @@ class OptimizerFactory
 
   public:
   /**
-   * @brief Creates a complete optimizer for an owned problem.
-   * @param[in] problem Non-null problem whose ownership transfers to the result.
-   * @param[in] configuration Complete validated settings copied into the optimizer.
-   * @return Unique ownership of the assembled Optimizer.
-   * @throws InvalidConfigurationError If @p problem is null or the configuration
-   * violates a constraint for its problem dimension.
+   * @brief Creates a validated custom optimizer using the standard runtime components.
+   *
+   * Extra arguments are forwarded after the four standard Optimizer constructor
+   * arguments, allowing application-specific subclasses without coupling the
+   * generic factory to them.
    */
-  static std::unique_ptr< Optimizer > create( std::unique_ptr< BlackBoxProblem > problem,
-                                              const OptimizerConfiguration &configuration )
+  template< typename OptimizerType, typename... ExtraArguments >
+  static std::unique_ptr< OptimizerType > createCustom( std::unique_ptr< BlackBoxProblem > problem,
+                                                        const OptimizerConfiguration &configuration,
+                                                        ExtraArguments &&...extra_arguments )
   {
     if ( !problem )
     {
@@ -251,8 +252,23 @@ class OptimizerFactory
       },
       configuration.hyperparameters );
 
-    return std::make_unique< Optimizer >( std::move( problem ), std::move( method ), configuration,
-                                          std::move( initial_parameters_strategy ) );
+    return std::make_unique< OptimizerType >(
+      std::move( problem ), std::move( method ), configuration, std::move( initial_parameters_strategy ),
+      std::forward< ExtraArguments >( extra_arguments )... );
+  }
+
+  /**
+   * @brief Creates a complete optimizer for an owned problem.
+   * @param[in] problem Non-null problem whose ownership transfers to the result.
+   * @param[in] configuration Complete validated settings copied into the optimizer.
+   * @return Unique ownership of the assembled Optimizer.
+   * @throws InvalidConfigurationError If @p problem is null or the configuration
+   * violates a constraint for its problem dimension.
+   */
+  static std::unique_ptr< Optimizer > create( std::unique_ptr< BlackBoxProblem > problem,
+                                              const OptimizerConfiguration &configuration )
+  {
+    return createCustom< Optimizer >( std::move( problem ), configuration );
   }
 };
 

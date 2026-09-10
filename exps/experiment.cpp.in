@@ -343,8 +343,8 @@ $external_stopping
           using Reason = typename EnvironmentType::TerminationReason;
           try
           {
-            const Result result = EpisodeRunner< EnvironmentType, Policy, Result >::run(
-              environment_, *policy_, scenario );
+            EpisodeRunner< EnvironmentType, Policy, Result > episode_runner( environment_, *policy_, scenario );
+            const Result result = episode_runner.run();
             if ( !std::in_range< std::uint64_t >( result.steps ) )
             {
               throw std::overflow_error( "Episode step count is not representable" );

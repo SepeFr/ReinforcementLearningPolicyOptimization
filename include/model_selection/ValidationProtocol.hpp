@@ -27,6 +27,7 @@
  * @tparam ObservationType Observation returned by the environment.
  * @tparam ActionType Action returned by the policy.
  * @tparam EnvironmentType Environment implementation shared across episodes.
+ * @tparam RunnerType Episode runner implementation propagated to policy problems.
  *
  * Training constructs a PolicyOptimizationProblem and an Optimizer. Validation
  * evaluates the trained best parameters in the objective's natural direction
@@ -36,12 +37,15 @@
  * @see KFoldCrossValidationProtocol
  * @see model_selection_chapter
  */
-template< typename ScenarioType, typename ObservationType, typename ActionType, typename EnvironmentType >
+template< typename ScenarioType, typename ObservationType, typename ActionType, typename EnvironmentType,
+          typename RunnerType =
+            typename PolicyOptimizationProblem< ScenarioType, ObservationType, ActionType, EnvironmentType >::Runner >
 class ValidationProtocol
 {
   using Scenario = ScenarioType; ///< Scenario type used by public protocol operations.
   using Environment = EnvironmentType; ///< Borrowed environment implementation type.
-  using ProblemType = PolicyOptimizationProblem< ScenarioType, ObservationType, ActionType, EnvironmentType >; ///< Training and evaluation objective type.
+  using ProblemType =
+    PolicyOptimizationProblem< ScenarioType, ObservationType, ActionType, EnvironmentType, RunnerType >; ///< Training and evaluation objective type.
 
   public:
   /**

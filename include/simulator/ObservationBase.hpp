@@ -34,7 +34,8 @@ class ObservationBase
 
   /** @brief Returns the stored observation components. @return Read-only reference valid for this object's lifetime. */
   const Eigen::VectorXd &value() const { return value_; }
-  /** @brief Provides mutable access to the stored observation components. @return Mutable reference valid for this object's lifetime. */
+  /** @brief Provides mutable access to the stored observation components. @return Mutable reference valid for this
+   * object's lifetime. */
   Eigen::VectorXd &value() { return value_; }
 
   private:

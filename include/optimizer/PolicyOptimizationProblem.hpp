@@ -64,16 +64,19 @@ namespace
  * Scenarios are processed in stored order. Each scenario contributes
  * number_of_runs consecutive samples, giving
  * `scenarios.size() * number_of_runs` samples on a complete evaluation. The
- * problem declares maximization because episode return is its natural score.
+ * The configured optimization direction determines how episode returns are interpreted.
  *
  * @tparam ScenarioType Scenario accepted by the environment.
  * @tparam ObservationType Observation shared by environment and policy.
  * @tparam ActionType Action shared by policy and environment.
  * @tparam EnvironmentType Concrete stateful environment type.
+ * @tparam RunnerType Episode runner implementation used for every replica.
  * @see simulation_execution_chapter
  * @see optimization_lifecycle_chapter
  */
-template< typename ScenarioType, typename ObservationType, typename ActionType, typename EnvironmentType >
+template< typename ScenarioType, typename ObservationType, typename ActionType, typename EnvironmentType,
+          typename RunnerType = EpisodeRunner< EnvironmentType, ParametrizedPolicy< ObservationType, ActionType >,
+                                               EpisodeResult< typename EnvironmentType::TerminationReason > > >
 class PolicyOptimizationProblem : public BlackBoxProblem
 {
   static_assert( std::is_same_v< typename EnvironmentType::Observation, ObservationType >,
@@ -82,11 +85,16 @@ class PolicyOptimizationProblem : public BlackBoxProblem
                  "ActionType and Environment::ActionType differs" );
 
   public:
-  using Scenario = ScenarioType; ///< Scenario stored and passed to Environment::reset().
-  using Observation = ObservationType; ///< Environment-to-policy observation type.
-  using Action = ActionType; ///< Policy-to-environment action type.
-  using Environment = EnvironmentType; ///< Concrete environment type.
+  using Scenario = ScenarioType;                            ///< Scenario stored and passed to Environment::reset().
+  using Observation = ObservationType;                      ///< Environment-to-policy observation type.
+  using Action = ActionType;                                ///< Policy-to-environment action type.
+  using Environment = EnvironmentType;                      ///< Concrete environment type.
   using Policy = ParametrizedPolicy< Observation, Action >; ///< Runtime policy interface.
+  using Result = EpisodeResult< typename Environment::TerminationReason >; ///< Episode aggregate type.
+  using Runner = RunnerType;                                               ///< Episode runner selected by the protocol.
+
+  static_assert( std::is_base_of_v< EpisodeRunner< Environment, Policy, Result >, Runner >,
+                 "RunnerType must derive from EpisodeRunner with matching types" );
 
   /** @brief Destroys the owned policy and regularization network. */
   ~PolicyOptimizationProblem() = default;
@@ -98,6 +106,7 @@ class PolicyOptimizationProblem : public BlackBoxProblem
    * @param[in,out] environment Environment reused sequentially by every replica.
    * It must outlive this problem and every call to evaluate().
    * @param[in] regularization_application Whether to add the configured weight penalty.
+   * @param[in] direction Whether episode returns are minimized or maximized.
    * @throws std::invalid_argument If @p scenarios is empty, @p number_of_runs
    * is zero, or the network configuration is invalid.
    * @throws InvalidConfigurationError If PolicyFactory rejects @p configuration.
@@ -106,9 +115,10 @@ class PolicyOptimizationProblem : public BlackBoxProblem
   PolicyOptimizationProblem(
     PolicyConfiguration configuration, std::vector< Scenario > scenarios, std::size_t number_of_runs,
     Environment &environment,
-    RegularizationApplication regularization_application = RegularizationApplication::Include ) :
+    RegularizationApplication regularization_application = RegularizationApplication::Include,
+    OptimizationDirection direction = OptimizationDirection::Maximize ) :
       BlackBoxProblem( FeedForwardNetworkConfiguration::parameterCountFromConfiguration( configuration.network ),
-                       OptimizationDirection::Maximize ),
+                       direction ),
       configuration_( std::move( configuration ) ),
       policy_( PolicyFactory::create< Observation, Action >( configuration_ ) ),
       regularization_network_( PolicyFactory::create( configuration_ ) ), scenarios_( std::move( scenarios ) ),
@@ -124,7 +134,9 @@ class PolicyOptimizationProblem : public BlackBoxProblem
     {
       throw std::invalid_argument( "PolicyOptimizationProblem: number of runs must be greater than zero" );
     }
-  }
+  } 
+
+
 
   /**
    * @brief Runs every configured scenario and replica with one parameter vector.
@@ -168,11 +180,11 @@ class PolicyOptimizationProblem : public BlackBoxProblem
     {
       for ( std::size_t run = 0; run < number_of_runs_; run++ )
       {
-        using Result = EpisodeResult< typename Environment::TerminationReason >;
         using TerminationReason = typename Environment::TerminationReason;
         try
         {
-          const Result result = EpisodeRunner< Environment, Policy, Result >::run( environment_, *policy_, scenario );
+          Runner episode_runner( environment_, *policy_, scenario );
+          const Result result = episode_runner.run();
           const bool failed = result.termination_reason == TerminationReason::Failure;
           if ( !std::in_range< std::uint64_t >( result.steps ) )
           {
@@ -197,7 +209,7 @@ class PolicyOptimizationProblem : public BlackBoxProblem
   }
 
 
-  private:
+  protected:
   /** Copied policy structure and regularization settings. */
   PolicyConfiguration configuration_;
   /** Owned policy used for episode actions. */

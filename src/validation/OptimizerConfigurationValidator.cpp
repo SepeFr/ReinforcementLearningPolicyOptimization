@@ -580,7 +580,24 @@ namespace
         else if constexpr ( std::is_same_v< Hyperparameters, OpenAIESHyperparameters > )
         {
           return hyperparameters.population_size >= 2 && hyperparameters.population_size % 2 == 0 &&
-            isFinitePositive( hyperparameters.learning_rate ) && isFinitePositive( hyperparameters.noise_scale );
+            isFinitePositive( hyperparameters.learning_rate ) && isFinitePositive( hyperparameters.noise_scale ) &&
+            std::isfinite( hyperparameters.beta_1 ) && hyperparameters.beta_1 >= 0.0 && hyperparameters.beta_1 < 1.0 &&
+            std::isfinite( hyperparameters.beta_2 ) && hyperparameters.beta_2 >= 0.0 && hyperparameters.beta_2 < 1.0 &&
+            isFinitePositive( hyperparameters.epsilon ) && std::isfinite( hyperparameters.weight_decay ) &&
+            hyperparameters.weight_decay >= 0.0 &&
+            ( !hyperparameters.adapt_noise_scale ||
+              ( std::isfinite( hyperparameters.target_success_rate ) &&
+                hyperparameters.target_success_rate > 0.0 && hyperparameters.target_success_rate < 1.0 &&
+                std::isfinite( hyperparameters.noise_scale_increase_factor ) &&
+                hyperparameters.noise_scale_increase_factor > 1.0 &&
+                std::isfinite( hyperparameters.noise_scale_decrease_factor ) &&
+                hyperparameters.noise_scale_decrease_factor > 0.0 &&
+                hyperparameters.noise_scale_decrease_factor < 1.0 &&
+                isFinitePositive( hyperparameters.minimum_noise_scale ) &&
+                std::isfinite( hyperparameters.maximum_noise_scale ) &&
+                hyperparameters.maximum_noise_scale >= hyperparameters.minimum_noise_scale &&
+                hyperparameters.noise_scale >= hyperparameters.minimum_noise_scale &&
+                hyperparameters.noise_scale <= hyperparameters.maximum_noise_scale ) );
         }
         else if constexpr ( std::is_same_v< Hyperparameters, CMAESHyperparameters > )
         {

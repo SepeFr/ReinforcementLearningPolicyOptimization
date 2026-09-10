@@ -11,14 +11,6 @@
 
 namespace
 {
-  void validateCandidateSize( const Eigen::VectorXd &candidate, const BlackBoxProblem &problem )
-  {
-    if ( candidate.size() != static_cast< Eigen::Index >( problem.parametersCount() ) )
-    {
-      throw std::invalid_argument( "Optimizer: candidate parameter count does not match the problem" );
-    }
-  }
-
   void updateOptimizationCounts( OptimizerResult &result,
                                  const std::vector< CandidateEvaluation > &candidates_evaluations,
                                  bool iteration_completed )
@@ -40,8 +32,7 @@ namespace
 
   void updateBestCandidateHistory( OptimizerResult &result, const CandidateEvaluation &candidate )
   {
-    if ( result.best_parameters_history.empty() ||
-         !sameParameters( result.best_parameters_history.back(), candidate ) )
+    if ( result.best_parameters_history.empty() || !sameParameters( result.best_parameters_history.back(), candidate ) )
     {
       result.best_parameters_history.push_back( candidate );
     }
@@ -77,10 +68,50 @@ Optimizer::Optimizer( std::unique_ptr< BlackBoxProblem > problem, std::unique_pt
     RandomInitializationConfiguration initialization_configuration;
     initialization_configuration.random_lower_bound = problem_->lowerBound();
     initialization_configuration.random_upper_bound = problem_->upperBound();
-    initial_parameters_strategy_ =
-      std::make_unique< RandomInitialization >( problem_->parametersCount(), std::move( initialization_configuration ) );
+    initial_parameters_strategy_ = std::make_unique< RandomInitialization >(
+      problem_->parametersCount(), std::move( initialization_configuration ) );
   }
   method_->setInitialParametersStrategy( initial_parameters_strategy_.get() );
+}
+
+
+CandidateEvaluation Optimizer::evaluateCandidate( BlackBoxProblem &problem, const Eigen::VectorXd &candidate )
+{
+  if ( candidate.size() != static_cast< Eigen::Index >( problem.parametersCount() ) )
+  {
+    throw std::invalid_argument( "Optimizer: candidate parameter count does not match the problem" );
+  }
+
+  if ( !candidate.allFinite() || !problem.withinBounds( candidate ) )
+  {
+    return CandidateEvaluation{ candidate, ObjectiveEvaluation{}, CandidateEvaluationStatus::Failed };
+  }
+
+  ObjectiveEvaluation evaluation = problem.evaluate( candidate );
+  if ( evaluation.sampleCount() == 0 || !evaluation.allFinite() )
+  {
+    return CandidateEvaluation{ candidate, std::move( evaluation ), CandidateEvaluationStatus::Failed };
+  }
+
+  if ( problem.direction() == OptimizationDirection::Maximize )
+  {
+    evaluation = evaluation.negated();
+  }
+
+  return CandidateEvaluation{ candidate, std::move( evaluation ), CandidateEvaluationStatus::Succeeded };
+}
+
+
+std::vector< CandidateEvaluation >
+Optimizer::evaluateCandidates( const std::vector< Eigen::VectorXd > &candidates )
+{
+  std::vector< CandidateEvaluation > evaluations;
+  evaluations.reserve( candidates.size() );
+  for ( const Eigen::VectorXd &candidate : candidates )
+  {
+    evaluations.push_back( evaluateCandidate( *problem_, candidate ) );
+  }
+  return evaluations;
 }
 
 
@@ -116,47 +147,18 @@ OptimizerResult Optimizer::optimize()
     }
 
     const std::size_t requested_candidate_count = candidates.size();
-    const std::size_t allowed_candidate_count =
-      stopping_criterion.allowedEvaluationCount( requested_candidate_count );
+    const std::size_t allowed_candidate_count = stopping_criterion.allowedEvaluationCount( requested_candidate_count );
     const bool partial_batch = allowed_candidate_count < requested_candidate_count;
     candidates.resize( allowed_candidate_count );
 
-    for ( const Eigen::VectorXd &candidate : candidates )
+    candidates_evaluations = evaluateCandidates( candidates );
+    if ( candidates_evaluations.size() != candidates.size() )
     {
-      validateCandidateSize( candidate, *problem_ );
-
-      if ( !candidate.allFinite() )
-      {
-        candidates_evaluations.push_back(
-          CandidateEvaluation{ candidate, ObjectiveEvaluation{}, CandidateEvaluationStatus::Failed } );
-        continue;
-      }
-
-      if ( !problem_->withinBounds( candidate ) )
-      {
-        // Boundary policy: report the attempted candidate as a failed evaluation.
-        candidates_evaluations.push_back(
-          CandidateEvaluation{ candidate, ObjectiveEvaluation{}, CandidateEvaluationStatus::Failed } );
-        continue;
-      }
-
-      ObjectiveEvaluation evaluation = problem_->evaluate( candidate );
-      result.execution_metrics.append( evaluation.executionMetrics() );
-
-      if ( evaluation.sampleCount() == 0 || !evaluation.allFinite() )
-      {
-        candidates_evaluations.push_back(
-          CandidateEvaluation{ candidate, std::move( evaluation ), CandidateEvaluationStatus::Failed } );
-        continue;
-      }
-
-      if ( maximize )
-      {
-        evaluation = evaluation.negated();
-      }
-
-      candidates_evaluations.push_back(
-        CandidateEvaluation{ candidate, std::move( evaluation ), CandidateEvaluationStatus::Succeeded } );
+      throw std::logic_error( "Optimizer: evaluateCandidates returned the wrong result count" );
+    }
+    for ( const CandidateEvaluation &candidate : candidates_evaluations )
+    {
+      result.execution_metrics.append( candidate.evaluation.executionMetrics() );
     }
 
     // A partial batch is the final iteration because it exhausts the available evaluation allowance.
@@ -165,6 +167,7 @@ OptimizerResult Optimizer::optimize()
     if ( !partial_batch )
     {
       method_update = method_->tell( candidates_evaluations );
+
 
       const CandidateEvaluation &method_best_candidate = method_->bestCandidate();
       if ( method_best_candidate.status == CandidateEvaluationStatus::Succeeded )
@@ -175,9 +178,8 @@ OptimizerResult Optimizer::optimize()
 
     updateOptimizationCounts( result, candidates_evaluations, method_update.iteration_completed );
 
-    const std::optional< OptimizationTerminationReason > stopping_reason =
-      stopping_criterion.stoppingReason(
-        candidates_evaluations, method_->bestCandidate(), result.number_of_iterations );
+    const std::optional< OptimizationTerminationReason > stopping_reason = stopping_criterion.stoppingReason(
+      candidates_evaluations, method_->bestCandidate(), result.number_of_iterations );
 
     if ( partial_batch )
     {
@@ -203,8 +205,7 @@ OptimizerResult Optimizer::optimize()
 
   if ( result.best_parameters_history.empty() )
   {
-    throw ConfigurationEvaluationError(
-      "Optimizer: optimization finished without a successful candidate evaluation" );
+    throw ConfigurationEvaluationError( "Optimizer: optimization finished without a successful candidate evaluation" );
   }
 
   if ( maximize )

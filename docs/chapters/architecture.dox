@@ -39,8 +39,9 @@
  *    objective samples retain their natural direction; method feedback always
  *    uses minimization values.
  * 5. @ref PolicyOptimizationProblem applies a candidate to its owned policy and
- *    executes scenarios and replicas through @ref EpisodeRunner. Episode return,
- *    failure status, and @ref ExecutionMetrics become an @ref ObjectiveEvaluation.
+ *    constructs its configured runner type for each scenario replica. The
+ *    default @ref EpisodeRunner produces the episode return, failure status,
+ *    and @ref ExecutionMetrics used by @ref ObjectiveEvaluation.
  * 6. The validation protocol evaluates the trained incumbent without policy
  *    regularization. @ref ConfigurationScoringCriterion converts its natural-
  *    direction mean and measured cost to a lower-is-better selection score.
@@ -55,6 +56,8 @@
  * methods retain a non-owning pointer to that strategy; declaration order keeps
  * the strategy alive until after method destruction. @ref PolicyOptimizationProblem
  * owns its policy objects and scenario vector while borrowing an environment.
+ * Each episode runner temporarily borrows that environment, the active policy,
+ * and one stored scenario.
  * Validation configurations also borrow their environment through
  * `std::reference_wrapper`.
  *

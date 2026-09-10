@@ -192,33 +192,33 @@ class CMAESMethod : public OptimizerMethod
   /** Copied initial sigma, population size, and seed. */
   CMAESHyperparameters hyperparameters_;
 
-  std::size_t dimension_; ///< \f$n\f$: optimization parameter count.
-  std::size_t population_size_; ///< \f$\lambda\f$: candidates per generation.
-  std::size_t selected_parent_count_; ///< \f$\mu=\lfloor\lambda/2\rfloor\f$: recombined parents.
-  Eigen::VectorXd recombination_weights_; ///< Positive normalized \f$w_i\f$ in rank order.
-  double effective_selection_mass_; ///< \f$\mu_{eff}=1/\sum_iw_i^2\f$.
+  std::size_t dimension_;                                  ///< \f$n\f$: optimization parameter count.
+  std::size_t population_size_;                            ///< \f$\lambda\f$: candidates per generation.
+  std::size_t selected_parent_count_;                      ///< \f$\mu=\lfloor\lambda/2\rfloor\f$: recombined parents.
+  Eigen::VectorXd recombination_weights_;                  ///< Positive normalized \f$w_i\f$ in rank order.
+  double effective_selection_mass_;                        ///< \f$\mu_{eff}=1/\sum_iw_i^2\f$.
 
-  double mean_learning_rate_; ///< Mean rate \f$c_m=1\f$.
-  double step_size_path_learning_rate_; ///< Step-size path rate \f$c_\sigma\f$.
-  double step_size_damping_; ///< Global step-size damping \f$d_\sigma\f$.
-  double covariance_path_learning_rate_; ///< Covariance path rate \f$c_c\f$.
-  double rank_one_learning_rate_; ///< Rank-one covariance rate \f$c_1\f$.
-  double rank_mu_learning_rate_; ///< Rank-mu covariance rate \f$c_\mu\f$.
-  double expected_normal_norm_; ///< Approximation \f$\chi_n=E\lVert\mathcal N(0,I)\rVert\f$.
+  double mean_learning_rate_;                              ///< Mean rate \f$c_m=1\f$.
+  double step_size_path_learning_rate_;                    ///< Step-size path rate \f$c_\sigma\f$.
+  double step_size_damping_;                               ///< Global step-size damping \f$d_\sigma\f$.
+  double covariance_path_learning_rate_;                   ///< Covariance path rate \f$c_c\f$.
+  double rank_one_learning_rate_;                          ///< Rank-one covariance rate \f$c_1\f$.
+  double rank_mu_learning_rate_;                           ///< Rank-mu covariance rate \f$c_\mu\f$.
+  double expected_normal_norm_;                            ///< Approximation \f$\chi_n=E\lVert\mathcal N(0,I)\rVert\f$.
 
-  Eigen::VectorXd initial_mean_; ///< Construction-time distribution mean \f$m_0\f$.
-  Eigen::VectorXd mean_; ///< Current distribution mean \f$m_k\f$.
-  double global_step_size_; ///< Current global step size \f$\sigma_k\f$.
-  Eigen::MatrixXd covariance_matrix_; ///< Covariance shape \f$C_k\f$.
-  Eigen::VectorXd step_size_path_; ///< Step-size evolution path \f$p_{\sigma,k}\f$.
-  Eigen::VectorXd covariance_path_; ///< Covariance evolution path \f$p_{c,k}\f$.
+  Eigen::VectorXd initial_mean_;                           ///< Construction-time distribution mean \f$m_0\f$.
+  Eigen::VectorXd mean_;                                   ///< Current distribution mean \f$m_k\f$.
+  double global_step_size_;                                ///< Current global step size \f$\sigma_k\f$.
+  Eigen::MatrixXd covariance_matrix_;                      ///< Covariance shape \f$C_k\f$.
+  Eigen::VectorXd step_size_path_;                         ///< Step-size evolution path \f$p_{\sigma,k}\f$.
+  Eigen::VectorXd covariance_path_;                        ///< Covariance evolution path \f$p_{c,k}\f$.
 
-  Eigen::MatrixXd eigenvectors_; ///< Orthogonal covariance eigenvectors \f$B_k\f$.
-  Eigen::MatrixXd axis_scaling_; ///< Diagonal square-root eigenvalue matrix \f$D_k\f$.
+  Eigen::MatrixXd eigenvectors_;                           ///< Orthogonal covariance eigenvectors \f$B_k\f$.
+  Eigen::VectorXd axis_scaling_;                           ///< Diagonal square-root eigenvalue matrix \f$D_k\f$.
 
   std::vector< Eigen::VectorXd > standard_normal_vectors_; ///< Current \f$z_i\sim\mathcal N(0,I)\f$ in draw order.
-  std::vector< Eigen::VectorXd > transformed_vectors_; ///< Current \f$y_i=B_kD_kz_i\f$ in matching order.
-  std::vector< Eigen::VectorXd > population_; ///< Current \f$x_i^k=m_k+\sigma_k y_i\f$ in matching order.
+  std::vector< Eigen::VectorXd > transformed_vectors_;     ///< Current \f$y_i=B_kD_kz_i\f$ in matching order.
+  std::vector< Eigen::VectorXd > population_;              ///< Current \f$x_i^k=m_k+\sigma_k y_i\f$ in matching order.
 
   /** Random engine seeded from hyperparameters_. */
   std::mt19937_64 generator_;
@@ -227,6 +227,8 @@ class CMAESMethod : public OptimizerMethod
 
   /** Number of generations that performed a distribution update. */
   std::size_t generation_ = 0;
+
+  std::size_t eigendecomposition_period_;
 };
 
 /** @} */

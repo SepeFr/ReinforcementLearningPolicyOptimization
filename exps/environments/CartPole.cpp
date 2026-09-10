@@ -45,18 +45,13 @@ namespace exps::cartpole
     const double cosine = std::cos( state_.theta );
     const double temporary =
       ( force + pole_mass_length_ * state_.theta_velocity * state_.theta_velocity * sine ) / total_mass_;
-    const double theta_acceleration =
-      ( gravity_ * sine - cosine * temporary ) /
+    const double theta_acceleration = ( gravity_ * sine - cosine * temporary ) /
       ( half_pole_length_ * ( 4.0 / 3.0 - pole_mass_ * cosine * cosine / total_mass_ ) );
-    const double x_acceleration =
-      temporary - pole_mass_length_ * theta_acceleration * cosine / total_mass_;
+    const double x_acceleration = temporary - pole_mass_length_ * theta_acceleration * cosine / total_mass_;
 
     const Scenario next_state{
-      state_.x + time_step_ * state_.x_velocity,
-      state_.x_velocity + time_step_ * x_acceleration,
-      state_.theta + time_step_ * state_.theta_velocity,
-      state_.theta_velocity + time_step_ * theta_acceleration
-    };
+      state_.x + time_step_ * state_.x_velocity, state_.x_velocity + time_step_ * x_acceleration,
+      state_.theta + time_step_ * state_.theta_velocity, state_.theta_velocity + time_step_ * theta_acceleration };
 
     state_ = next_state;
     ++step_count_;
@@ -80,4 +75,4 @@ namespace exps::cartpole
     }
     return result;
   }
-}
+} // namespace exps::cartpole

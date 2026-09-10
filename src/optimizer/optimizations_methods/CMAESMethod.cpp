@@ -46,18 +46,16 @@ CMAESMethod::CMAESMethod( const CMAESHyperparameters &hyperparameters, std::size
       Eigen::VectorXd::Zero( static_cast< Eigen::Index >( hyperparameters.population_size / 2 ) ) ),
     effective_selection_mass_( 0.0 ), mean_learning_rate_( 1.0 ), step_size_path_learning_rate_( 0.0 ),
     step_size_damping_( 0.0 ), covariance_path_learning_rate_( 0.0 ), rank_one_learning_rate_( 0.0 ),
-    rank_mu_learning_rate_( 0.0 ), expected_normal_norm_( 0.0 ),
-    initial_mean_(), mean_( static_cast< Eigen::Index >( number_of_parameters ) ),
-    global_step_size_( hyperparameters.initial_sigma ),
+    rank_mu_learning_rate_( 0.0 ), expected_normal_norm_( 0.0 ), initial_mean_(),
+    mean_( static_cast< Eigen::Index >( number_of_parameters ) ), global_step_size_( hyperparameters.initial_sigma ),
     covariance_matrix_( Eigen::MatrixXd::Identity( static_cast< Eigen::Index >( number_of_parameters ),
                                                    static_cast< Eigen::Index >( number_of_parameters ) ) ),
     step_size_path_( Eigen::VectorXd::Zero( static_cast< Eigen::Index >( number_of_parameters ) ) ),
     covariance_path_( Eigen::VectorXd::Zero( static_cast< Eigen::Index >( number_of_parameters ) ) ),
     eigenvectors_( static_cast< Eigen::Index >( number_of_parameters ),
                    static_cast< Eigen::Index >( number_of_parameters ) ),
-    axis_scaling_( static_cast< Eigen::Index >( number_of_parameters ),
-                   static_cast< Eigen::Index >( number_of_parameters ) ),
-    generator_( hyperparameters.random_seed ), standard_normal_distribution_( 0.0, 1.0 )
+    axis_scaling_( static_cast< Eigen::Index >( number_of_parameters ) ), generator_( hyperparameters.random_seed ),
+    standard_normal_distribution_( 0.0, 1.0 ), eigendecomposition_period_( hyperparameters.eigendecomposition_period )
 {
   validateConfiguration();
 
@@ -98,6 +96,10 @@ void CMAESMethod::validateConfiguration() const
   if ( !std::isfinite( global_step_size_ ) || global_step_size_ <= 0.0 )
   {
     throw std::invalid_argument( "CMAESMethod: initial sigma must be finite and positive" );
+  }
+  if ( eigendecomposition_period_ == 0 )
+  {
+    throw std::invalid_argument( "CMAESMethod: eigendecomposition period must be greater than zero" );
   }
 }
 
@@ -140,7 +142,7 @@ void CMAESMethod::initializeState()
   step_size_path_.setZero( dimension );
   covariance_path_.setZero( dimension );
   eigenvectors_.setIdentity( dimension, dimension );
-  axis_scaling_.setIdentity( dimension, dimension );
+  axis_scaling_.setOnes( dimension );
 
   standard_normal_vectors_.clear();
   transformed_vectors_.clear();
@@ -150,6 +152,7 @@ void CMAESMethod::initializeState()
   standard_normal_distribution_.reset();
   generation_ = 0;
 }
+
 
 std::vector< Eigen::VectorXd > CMAESMethod::ask()
 {
@@ -174,7 +177,7 @@ void CMAESMethod::transformStandardNormalVectors()
   transformed_vectors_.clear();
   for ( const Eigen::VectorXd &z_k : standard_normal_vectors_ )
   {
-    transformed_vectors_.emplace_back( eigenvectors_ * axis_scaling_ * z_k );
+    transformed_vectors_.emplace_back( eigenvectors_ * axis_scaling_.cwiseProduct( z_k ) );
   }
 }
 
@@ -207,9 +210,13 @@ OptimizerMethodUpdate CMAESMethod::tellImpl( const std::vector< CandidateEvaluat
   const double h_sigma = calculateHSigma();
   updateCovariancePath( weighted_mean_step, h_sigma );
   updateCovarianceMatrix( sorted_candidates, h_sigma );
-  updateEigendecomposition();
 
   ++generation_;
+
+  if ( generation_ % eigendecomposition_period_ == 0 )
+  {
+    updateEigendecomposition();
+  }
   return {};
 }
 
@@ -270,7 +277,7 @@ void CMAESMethod::updateStepSizePath( const Eigen::VectorXd &weighted_mean_step 
 {
   // C^(-1/2) y_w = B D^(-1) B^T y_w.
   Eigen::VectorXd whitened_mean_step = eigenvectors_.transpose() * weighted_mean_step;
-  whitened_mean_step.array() /= axis_scaling_.diagonal().array();
+  whitened_mean_step.array() /= axis_scaling_.array();
   whitened_mean_step = eigenvectors_ * whitened_mean_step;
 
   step_size_path_ = ( 1.0 - step_size_path_learning_rate_ ) * step_size_path_ +
@@ -341,7 +348,7 @@ void CMAESMethod::updateEigendecomposition()
   }
 
   eigenvectors_ = decomposition.eigenvectors();
-  axis_scaling_ = decomposition.eigenvalues().cwiseSqrt().asDiagonal();
+  axis_scaling_ = decomposition.eigenvalues().cwiseSqrt();
 }
 
 

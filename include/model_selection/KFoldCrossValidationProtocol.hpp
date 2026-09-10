@@ -23,6 +23,7 @@
  * @tparam ObservationType Observation returned by the environment.
  * @tparam ActionType Action returned by the policy.
  * @tparam EnvironmentType Environment implementation shared across folds.
+ * @tparam RunnerType Episode runner implementation propagated to every fold.
  *
  * The original training and validation vectors are concatenated in that order,
  * permuted from `random_seed`, and partitioned into contiguous validation folds.
@@ -31,11 +32,14 @@
  *
  * @see model_selection_chapter
  */
-template< typename ScenarioType, typename ObservationType, typename ActionType, typename EnvironmentType >
+template< typename ScenarioType, typename ObservationType, typename ActionType, typename EnvironmentType,
+          typename RunnerType =
+            typename PolicyOptimizationProblem< ScenarioType, ObservationType, ActionType, EnvironmentType >::Runner >
 class KFoldCrossValidationProtocol final
-    : public ValidationProtocol< ScenarioType, ObservationType, ActionType, EnvironmentType >
+    : public ValidationProtocol< ScenarioType, ObservationType, ActionType, EnvironmentType, RunnerType >
 {
-  using Base = ValidationProtocol< ScenarioType, ObservationType, ActionType, EnvironmentType >; ///< Holdout operations reused per fold.
+  using Base = ValidationProtocol< ScenarioType, ObservationType, ActionType, EnvironmentType,
+                                   RunnerType >; ///< Holdout operations reused per fold.
   using Scenario = ScenarioType; ///< Scenario value type.
   using Environment = EnvironmentType; ///< Borrowed environment type.
 

@@ -5,12 +5,15 @@
  * @{ */
 
 #include <memory>
+#include <vector>
 #include "BlackBoxProblem.hpp"
+#include "CandidateEvaluation.hpp"
 #include "InitialParametersStrategy.hpp"
 #include "OptimizationStoppingCriterion.hpp"
 #include "OptimizerConfiguration.hpp"
 #include "OptimizerMethod.hpp"
 #include "OptimizerResult.hpp"
+
 /**
  * @brief Orchestrates a BlackBoxProblem and an OptimizerMethod to termination.
  *
@@ -24,6 +27,8 @@
 class Optimizer
 {
   public:
+  virtual ~Optimizer() = default;
+
   /**
    * @brief Takes ownership of all components required by optimize().
    * @param[in] problem Objective and feasibility contract; must be non-null.
@@ -53,6 +58,21 @@ class Optimizer
    * @note Exceptions produced by the objective and concrete method propagate.
    */
   OptimizerResult optimize();
+
+  protected:
+  /** Evaluates one ask() batch. Derived optimizers may parallelize this operation. */
+  virtual std::vector< CandidateEvaluation >
+  evaluateCandidates( const std::vector< Eigen::VectorXd > &candidates );
+
+  /** Applies the standard validation, evaluation, and direction-normalization rules. */
+  static CandidateEvaluation evaluateCandidate( BlackBoxProblem &problem, const Eigen::VectorXd &candidate );
+
+  /** Provides derived optimizers with the primary objective instance. */
+  BlackBoxProblem &problem() { return *problem_; }
+
+  /** Provides derived optimizers with the active ask--tell method. */
+  OptimizerMethod &method() { return *method_; }
+
 
   private:
   /** Owned objective; destroyed after the method and strategy fields below. */

@@ -5,6 +5,8 @@
  * @ref Policy. Their nested `Observation` and `Action` types must match at
  * compile time. @ref EpisodeRunner contains the control loop and returns an
  * @ref EpisodeResult when the environment reports completion.
+ * It borrows an environment, policy, and scenario supplied at construction;
+ * `run()` executes the bound episode without additional arguments.
  *
  * @image html simulation_components.svg "Simulation components and the policy-optimization bridge."
  *
@@ -57,6 +59,8 @@
  * The problem owns its scenario copies and two policy objects. It borrows one
  * environment and reuses it sequentially. The primary policy produces actions.
  * A second @ref FeedForwardNetwork exposes weight parameters for regularization.
+ * Its optional runner type defaults to @ref EpisodeRunner and is propagated by
+ * the holdout and K-fold validation protocols.
  * With @ref RegularizationApplication::Include, the same configured L1 or
  * squared-L2 penalty is added to every episode return. Validation and test calls
  * use @ref RegularizationApplication::Exclude.

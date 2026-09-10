@@ -89,11 +89,31 @@ struct ChangStochasticNelderMeadHyperparameters : NelderMeadHyperparameters
 /** @brief Configures antithetic OpenAI evolution strategies. */
 struct OpenAIESHyperparameters
 {
+  enum class UpdateMethod
+  {
+    SGD,
+    Adam,
+    AdamW
+  };
+
   std::size_t population_size = 50; ///< Even population cardinality of at least two.
   double learning_rate = 0.01; ///< Finite positive mean-update multiplier.
   double noise_scale = 0.1; ///< Finite positive Gaussian smoothing scale \f$\sigma\f$.
+  bool adapt_noise_scale = false; ///< Applies the one-fifth mutation-success rule when enabled.
+  double target_success_rate = 0.2; ///< One-fifth-rule target probability of beating the parent center.
+  double noise_scale_increase_factor = 1.05; ///< Multiplier used above the target success rate.
+  double noise_scale_decrease_factor = 0.95; ///< Multiplier used below the target success rate.
+  double minimum_noise_scale = 1e-6; ///< Positive lower clamp for adaptive \f$\sigma\f$.
+  double maximum_noise_scale = 1.0; ///< Upper clamp for adaptive \f$\sigma\f$.
+  UpdateMethod update_method = UpdateMethod::AdamW; ///< Mean-update algorithm.
+  double beta_1 = 0.9; ///< Adam/AdamW first-moment decay.
+  double beta_2 = 0.999; ///< Adam/AdamW second-moment decay.
+  double epsilon = 1e-8; ///< Adam/AdamW denominator stability constant.
+  double weight_decay = 1e-4; ///< AdamW's decoupled parameter-decay coefficient.
   bool use_rank_fitness = true; ///< Converts minimization values to centered ranks when enabled.
   std::size_t random_seed = 42; ///< Seed restored for Gaussian perturbations.
+  /** Prefix held fixed during ask/update. Zero optimizes the complete vector. */
+  std::size_t frozen_prefix_size = 0;
 };
 
 /** @brief Configures the population and initial global scale of CMA-ES. */
@@ -102,6 +122,7 @@ struct CMAESHyperparameters
   double initial_sigma = 1.0; ///< Finite positive initial global step size \f$\sigma_0\f$.
   std::size_t population_size = 100; ///< Generation size \f$\lambda\geq2\f$.
   std::size_t random_seed = 42; ///< Seed restored for standard-normal samples.
+  std::size_t eigendecomposition_period = 10; ///< Generations between eigensystem refreshes.
 };
 
 /** @brief Configures particle-swarm velocity and population updates. */

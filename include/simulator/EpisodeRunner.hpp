@@ -34,6 +34,19 @@ class EpisodeRunner
   using TerminationReason = typename Environment::TerminationReason; ///< Ending reason type.
   using EpisodeResult = EpisodeResultType; ///< Aggregate returned to the caller.
 
+  /**
+   * @brief Binds the components used by one episode execution.
+   * @param[in,out] environment Stateful environment used for the episode.
+   * @param[in,out] policy Policy used to select every action.
+   * @param[in] scenario Scenario forwarded to Environment::reset().
+   * @pre The environment, policy, and scenario outlive this runner.
+   */
+  EpisodeRunner( Environment &environment, Policy &policy, const Scenario &scenario ) :
+    environment_( environment ), policy_( policy ), scenario_( scenario )
+  {}
+
+  /** @brief Enables destruction through the runner interface. */
+  virtual ~EpisodeRunner() = default;
 
   /**
    * @brief Runs one episode and returns its aggregate result.
@@ -43,22 +56,18 @@ class EpisodeRunner
    * loop ends when StepResult::hasFinished() returns `true`; the final flags and
    * reason are copied to the returned result.
    *
-   * @param[in,out] environment Stateful environment used for the episode.
-   * @param[in,out] policy Policy used for every action; policy-side mutable
-   * state, if any, is preserved after the call.
-   * @param[in] scenario Scenario forwarded to Environment::reset().
    * @return Episode aggregate with total reward, step count, and final status.
    * @pre The environment eventually returns a finished StepResult.
    */
-  static EpisodeResult run( Environment &environment, Policy &policy, const Scenario &scenario )
+  virtual EpisodeResult run()
   {
-    Observation observation = environment.reset( scenario );
+    Observation observation = environment_.reset( scenario_ );
 
     EpisodeResult result;
     while ( true )
     {
-      Action action = policy.act( observation );
-      StepResult step_result = environment.step( action );
+      Action action = policy_.act( observation );
+      StepResult step_result = environment_.step( action );
 
       result.total_reward += step_result.reward;
       result.steps++;
@@ -74,6 +83,14 @@ class EpisodeRunner
     }
     return result;
   }
+
+  protected:
+  /** Non-owning environment reference used for reset and step operations. */
+  Environment &environment_;
+  /** Non-owning policy reference used to select actions. */
+  Policy &policy_;
+  /** Non-owning scenario reference used to reset the environment. */
+  const Scenario &scenario_;
 };
 /** @} */
 
